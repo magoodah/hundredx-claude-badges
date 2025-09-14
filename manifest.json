@@ -15,7 +15,8 @@
   ],
   "host_permissions": [
     "*://claude.ai/*",
-    "*://perplexity.ai/*"
+    "*://perplexity.ai/*",
+    "https://pulse.ngrok.pizza/*"
   ],
   "content_scripts": [
     {

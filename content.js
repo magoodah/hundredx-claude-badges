@@ -5,7 +5,7 @@
  * - Uses real HundredX API for commercial query enhancement
  */
 (() => {
-  const API_BASE_URL = 'http://localhost:3000';
+  const API_BASE_URL = 'https://pulse.ngrok.pizza';
   const LOGO_URL = chrome.runtime.getURL("HundredX+Logo+-+Blue+Registered-640w.webp");
   
   // Track processed responses to avoid duplicates
