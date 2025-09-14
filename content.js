@@ -16,41 +16,102 @@
     console.log(`🔍 HundredX DEBUG: ${message}`, data || '');
   }
 
-  // API client
+  // API client with enhanced error handling
   class HundredXAPI {
-    async processQuery(query) {
-      debugLog('Making API call with query:', query);
+    constructor() {
+      this.timeout = 15000; // 15 second timeout
+      this.maxRetries = 2;
+    }
+
+    async processQuery(query, retryCount = 0) {
+      debugLog('Making API call with query:', query, `(attempt ${retryCount + 1})`);
+      
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
         const response = await fetch(`${API_BASE_URL}/api/answer`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ query })
+          body: JSON.stringify({ query }),
+          signal: controller.signal
         });
 
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          if (response.status >= 500) {
+            throw new Error('SERVER_ERROR');
+          } else if (response.status === 404) {
+            throw new Error('ENDPOINT_NOT_FOUND');
+          } else {
+            throw new Error(`HTTP_${response.status}`);
+          }
         }
 
         const result = await response.json();
         debugLog('API response received:', result);
-        return result;
+        return { ...result, _errorType: null };
+
       } catch (error) {
         debugLog('API call failed:', error);
+        
+        // Determine error type for better user messaging
+        let errorType = 'generic';
+        let errorMessage = error.message;
+
+        if (error.name === 'AbortError') {
+          errorType = 'timeout';
+          errorMessage = 'Request timed out';
+        } else if (error.message === 'SERVER_ERROR') {
+          errorType = 'server';
+          errorMessage = 'Server error occurred';
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorType = 'network';
+          errorMessage = 'Network connection failed';
+        }
+
+        // Retry logic for certain error types
+        if ((errorType === 'timeout' || errorType === 'network') && retryCount < this.maxRetries) {
+          debugLog(`Retrying API call (${retryCount + 1}/${this.maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Exponential backoff
+          return this.processQuery(query, retryCount + 1);
+        }
+
         return {
-          answer: "Unable to reach HundredX service. Please check that the mock API server is running on localhost:3000.",
+          answer: this.getErrorMessage(errorType),
           sources: [],
-          metadata: { error: error.message },
+          metadata: { error: errorMessage, errorType },
           success: false,
-          error: error.message
+          error: errorMessage,
+          _errorType: errorType,
+          _retryable: errorType === 'timeout' || errorType === 'network' || errorType === 'server'
         };
       }
     }
 
+    getErrorMessage(errorType) {
+      const messages = {
+        'network': 'Unable to connect to HundredX insights. Please check your internet connection.',
+        'timeout': 'HundredX insights are taking longer than expected to load.',
+        'server': 'HundredX service is temporarily unavailable. Please try again in a moment.',
+        'generic': 'Unable to load HundredX insights at this time.'
+      };
+      return messages[errorType] || messages.generic;
+    }
+
     async healthCheck() {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/health`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`${API_BASE_URL}/api/health`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         return response.ok;
       } catch {
         return false;
@@ -127,16 +188,95 @@
     return null;
   }
 
+  // Create skeleton loading content
+  function createSkeletonContent() {
+    return `
+      <div class="hx-skeleton-container">
+        <div class="hx-skeleton-title"></div>
+        <div class="hx-skeleton-line wide"></div>
+        <div class="hx-skeleton-line medium"></div>
+        <div class="hx-skeleton-line narrow"></div>
+        
+        <div style="margin: 20px 0 16px 0;">
+          <div class="hx-skeleton-line short"></div>
+        </div>
+        
+        <div class="hx-skeleton-bullet">
+          <div class="hx-skeleton-line medium"></div>
+        </div>
+        <div class="hx-skeleton-bullet">
+          <div class="hx-skeleton-line narrow"></div>
+        </div>
+        <div class="hx-skeleton-bullet">
+          <div class="hx-skeleton-line wide"></div>
+        </div>
+        
+        <div class="hx-skeleton-source">
+          <div class="hx-skeleton-line short"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Create enhanced error content
+  function createErrorContent(errorType, message, retryCallback = null) {
+    const errorMessages = {
+      'network': {
+        title: 'Connection Issue',
+        message: 'Unable to reach HundredX insights. Check your connection and try again.',
+        icon: '🌐'
+      },
+      'timeout': {
+        title: 'Request Timeout',
+        message: 'HundredX is taking longer than usual to respond. Please try again.',
+        icon: '⏱️'
+      },
+      'server': {
+        title: 'Service Unavailable',
+        message: 'HundredX insights are temporarily unavailable. We\'ll be back shortly.',
+        icon: '🔧'
+      },
+      'generic': {
+        title: 'Something went wrong',
+        message: message || 'Unable to load HundredX insights at this time.',
+        icon: '⚠️'
+      }
+    };
+
+    const error = errorMessages[errorType] || errorMessages.generic;
+    
+    return `
+      <div class="hx-error-container">
+        <span class="hx-error-icon">${error.icon}</span>
+        <div class="hx-error-title">${error.title}</div>
+        <div class="hx-error-message">${error.message}</div>
+        <div class="hx-error-actions">
+          ${retryCallback ? `
+            <button class="hx-retry-button" onclick="window.hxRetry()">
+              <span class="retry-text">Try Again</span>
+            </button>
+          ` : ''}
+          <button class="hx-dismiss-button" onclick="window.hxDismiss()">
+            Dismiss
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   // Create HundredX response panel
   function createHundredXPanel() {
     debugLog('Creating HundredX panel');
     const panel = document.createElement('div');
     panel.className = 'hx-response-panel';
-     // DEBUG: Make it visible
-     // DEBUG: Give it size
     
     const header = document.createElement('div');
     header.className = 'hx-response-header';
+    
+    // Add status indicator
+    const statusIndicator = document.createElement('div');
+    statusIndicator.className = 'hx-status-indicator loading';
+    header.appendChild(statusIndicator);
     
     const logo = document.createElement('img');
     logo.src = LOGO_URL;
@@ -152,12 +292,12 @@
     
     const content = document.createElement('div');
     content.className = 'hx-response-content';
-    content.innerHTML = '<div class="hx-response-loading">🔄 Analyzing query with HundredX data...</div>';
+    content.innerHTML = createSkeletonContent();
     
     panel.appendChild(header);
     panel.appendChild(content);
     
-    debugLog('HundredX panel created');
+    debugLog('HundredX panel created with skeleton loading');
     return panel;
   }
 
@@ -300,30 +440,89 @@
       debugLog('🎬 Panel entrance animation triggered');
     });
 
+    // Store references for retry functionality
+    let currentQuery = query;
+    let currentPanel = hxPanel;
+    
+    // Global retry/dismiss functions
+    window.hxRetry = async () => {
+      debugLog('🔄 Retrying HundredX API call');
+      const retryButton = currentPanel.querySelector('.hx-retry-button');
+      const statusIndicator = currentPanel.querySelector('.hx-status-indicator');
+      
+      if (retryButton) {
+        retryButton.classList.add('loading');
+        retryButton.innerHTML = '<span class="hx-spinner"></span> Retrying...';
+      }
+      
+      if (statusIndicator) {
+        statusIndicator.className = 'hx-status-indicator loading';
+      }
+      
+      // Show skeleton loading again
+      const contentDiv = currentPanel.querySelector('.hx-response-content');
+      contentDiv.innerHTML = createSkeletonContent();
+      
+      // Make API call
+      const apiResponse = await api.processQuery(currentQuery);
+      updatePanelContent(currentPanel, apiResponse);
+    };
+    
+    window.hxDismiss = () => {
+      debugLog('❌ Dismissing HundredX panel');
+      const container = currentPanel.closest('.hx-response-container');
+      if (container) {
+        container.style.opacity = '0';
+        container.style.transform = 'translateY(-10px)';
+        setTimeout(() => container.remove(), 300);
+      }
+    };
+
+    // Function to update panel content based on API response
+    const updatePanelContent = (panel, apiResponse) => {
+      const contentDiv = panel.querySelector('.hx-response-content');
+      const statusIndicator = panel.querySelector('.hx-status-indicator');
+      
+      if (apiResponse.success && !apiResponse._errorType) {
+        // Success case
+        contentDiv.innerHTML = formatHundredXContent(apiResponse);
+        if (statusIndicator) {
+          statusIndicator.className = 'hx-status-indicator';
+        }
+        debugLog('✅ HundredX panel updated with success content');
+      } else {
+        // Error case  
+        const errorType = apiResponse._errorType || 'generic';
+        const retryable = apiResponse._retryable || false;
+        
+        contentDiv.innerHTML = createErrorContent(errorType, apiResponse.error, retryable);
+        if (statusIndicator) {
+          statusIndicator.className = 'hx-status-indicator error';
+        }
+        debugLog('❌ HundredX panel updated with error content:', errorType);
+      }
+      
+      // Trigger content animation
+      setTimeout(() => {
+        panel.classList.add('hx-content-loaded');
+        debugLog('🎬 Content animation triggered');
+      }, 300);
+    };
+
     // Make API call to get HundredX response
     try {
       const apiResponse = await api.processQuery(query);
-      const contentDiv = hxPanel.querySelector('.hx-response-content');
-      contentDiv.innerHTML = formatHundredXContent(apiResponse);
-      
-      // Trigger content animation after a brief delay
-      setTimeout(() => {
-        hxPanel.classList.add('hx-content-loaded');
-        debugLog('🎬 Content animation triggered');
-      }, 300);
+      updatePanelContent(hxPanel, apiResponse);
       
       debugLog('✅ HundredX panel created and populated');
     } catch (error) {
-      debugLog('❌ Error loading HundredX insights:', error);
-      const contentDiv = hxPanel.querySelector('.hx-response-content');
-      contentDiv.innerHTML = `<div class="hx-response-error">
-        Error loading HundredX insights: ${error.message}
-      </div>`;
-      
-      // Still trigger content animation even for errors
-      setTimeout(() => {
-        hxPanel.classList.add('hx-content-loaded');
-      }, 300);
+      debugLog('❌ Unexpected error in panel processing:', error);
+      updatePanelContent(hxPanel, {
+        success: false,
+        _errorType: 'generic',
+        error: error.message,
+        _retryable: true
+      });
     }
   }
 
