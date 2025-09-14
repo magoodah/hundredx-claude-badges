@@ -294,11 +294,24 @@
     const hxPanel = createHundredXPanel();
     container.appendChild(hxPanel);
 
+    // Trigger entrance animation
+    requestAnimationFrame(() => {
+      hxPanel.classList.add('hx-animate-in');
+      debugLog('🎬 Panel entrance animation triggered');
+    });
+
     // Make API call to get HundredX response
     try {
       const apiResponse = await api.processQuery(query);
       const contentDiv = hxPanel.querySelector('.hx-response-content');
       contentDiv.innerHTML = formatHundredXContent(apiResponse);
+      
+      // Trigger content animation after a brief delay
+      setTimeout(() => {
+        hxPanel.classList.add('hx-content-loaded');
+        debugLog('🎬 Content animation triggered');
+      }, 300);
+      
       debugLog('✅ HundredX panel created and populated');
     } catch (error) {
       debugLog('❌ Error loading HundredX insights:', error);
@@ -306,6 +319,11 @@
       contentDiv.innerHTML = `<div class="hx-response-error">
         Error loading HundredX insights: ${error.message}
       </div>`;
+      
+      // Still trigger content animation even for errors
+      setTimeout(() => {
+        hxPanel.classList.add('hx-content-loaded');
+      }, 300);
     }
   }
 
