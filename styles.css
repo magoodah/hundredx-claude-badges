@@ -1,0 +1,226 @@
+
+/* Badges + Tooltip (in-page, inherits page fonts where possible) */
+.hx-go-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(0, 138, 209, 0.12);
+  border: 1px solid rgba(0, 138, 209, 0.35);
+  color: #008ad1;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 120ms ease;
+}
+.hx-go-badge:focus { outline: 2px solid rgba(0, 138, 209, 0.5); outline-offset: 2px; }
+.hx-go-badge:hover { transform: translateY(-1px); }
+
+.hx-go-tooltip {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 8px;
+  white-space: nowrap;
+  background: rgba(0,0,0,0.85);
+  color: white;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  z-index: 100000;
+}
+.hx-go-badge:hover .hx-go-tooltip,
+.hx-go-badge:focus .hx-go-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hx-go-brand-wrap {
+  background: linear-gradient(transparent 70%, rgba(0, 138, 209, 0.15) 0);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
+/* Shadow Panel (styles only apply inside shadow root) */
+:host { all: initial; }
+
+.hx-go-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.12);
+  backdrop-filter: blur(2px);
+  display: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.hx-go-overlay.hx-open { opacity: 1; }
+
+.hx-go-panel {
+  position: fixed;
+  top: 0; right: 0;
+  width: min(420px, 100vw);
+  height: 100vh;
+  background: #0f172a; /* slate-900 */
+  color: #e2e8f0; /* slate-200 */
+  transform: translateX(100%);
+  transition: transform 180ms ease;
+  box-shadow: -10px 0 30px rgba(0,0,0,0.25);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+.hx-go-panel.hx-open { transform: translateX(0); }
+
+.hx-go-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.hx-go-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+.hx-go-brand .dot {
+  width: 10px; height: 10px; border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 12px rgba(34,197,94,0.65);
+}
+.hx-go-close {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.hx-go-close:hover { background: rgba(255,255,255,0.06); }
+
+.hx-go-body {
+  padding: 16px;
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.hx-go-badge-large {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: rgba(34,197,94,0.16);
+  color: #86efac;
+  border: 1px solid rgba(34,197,94,0.4);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 14px;
+  min-width: 64px;
+}
+
+.hx-go-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.hx-go-meta {
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: -4px;
+  margin-bottom: 4px;
+}
+
+.hx-go-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 12px;
+}
+.hx-go-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.hx-go-pros-cons {
+  list-style: none;
+  padding: 0; margin: 8px 0 0;
+  display: grid; gap: 6px;
+}
+.hx-go-pros-cons li {
+  font-size: 13px;
+  padding-left: 8px;
+  border-left: 3px solid transparent;
+}
+.hx-go-pros-cons li.pro { border-color: #22c55e; }
+.hx-go-pros-cons li.con { border-color: #ef4444; }
+
+.hx-go-compare {
+  display: grid;
+  gap: 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.hx-go-compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.02);
+}
+.hx-go-compare-row:nth-child(odd) {
+  background: rgba(255,255,255,0.05);
+}
+.hx-go-compare-cell {
+  font-size: 13px;
+}
+.hx-muted { color: #94a3b8; }
+
+.hx-go-empty {
+  font-size: 14px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* HundredX Branding Header */
+.hx-go-branding-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 0 0 12px 0;
+  background: rgba(0, 138, 209, 0.04);
+  border: 1px solid rgba(0, 138, 209, 0.12);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #64748b;
+  opacity: 0.75;
+  transition: opacity 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.hx-go-branding-header:hover {
+  opacity: 1;
+}
+
+.hx-go-branding-logo {
+  height: 14px;
+  width: auto;
+  opacity: 0.8;
+}
+
+.hx-go-branding-text {
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}

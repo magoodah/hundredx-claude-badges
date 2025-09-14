@@ -1,0 +1,108 @@
+{
+  "brands": {
+    "nike": {
+      "display": "Nike",
+      "score": 87,
+      "reviews": 10482,
+      "pros": [
+        "Comfortable fit",
+        "Strong durability",
+        "Modern design"
+      ],
+      "cons": [
+        "Pricey at launch",
+        "Sizing varies"
+      ]
+    },
+    "adidas": {
+      "display": "Adidas",
+      "score": 84,
+      "reviews": 9811,
+      "pros": [
+        "Excellent cushion",
+        "Great for wide feet",
+        "Sustainable lines"
+      ],
+      "cons": [
+        "Some models run large"
+      ]
+    },
+    "canon": {
+      "display": "Canon",
+      "score": 91,
+      "reviews": 12477,
+      "pros": [
+        "Color science",
+        "Lens ecosystem",
+        "Battery life"
+      ],
+      "cons": [
+        "Bodies can be heavier"
+      ]
+    },
+    "nikon": {
+      "display": "Nikon",
+      "score": 89,
+      "reviews": 9342,
+      "pros": [
+        "Low light AF",
+        "Great handling",
+        "Lens quality"
+      ],
+      "cons": [
+        "Menu learning curve"
+      ]
+    },
+    "delta": {
+      "display": "Delta Air Lines",
+      "score": 76,
+      "reviews": 15400,
+      "pros": [
+        "On-time performance",
+        "Crew friendliness"
+      ],
+      "cons": [
+        "Change fees on some fares"
+      ]
+    },
+    "united": {
+      "display": "United Airlines",
+      "score": 72,
+      "reviews": 14950,
+      "pros": [
+        "Route network",
+        "Newer planes on key routes"
+      ],
+      "cons": [
+        "Customer service consistency"
+      ]
+    },
+    "apple": {
+      "display": "Apple",
+      "score": 92,
+      "reviews": 45310,
+      "pros": [
+        "Ecosystem",
+        "Build quality",
+        "Resale value"
+      ],
+      "cons": [
+        "Closed system",
+        "Premium pricing"
+      ]
+    },
+    "samsung": {
+      "display": "Samsung",
+      "score": 88,
+      "reviews": 38990,
+      "pros": [
+        "Display quality",
+        "Battery life",
+        "Feature-rich"
+      ],
+      "cons": [
+        "Update cadence varies"
+      ]
+    }
+  }
+}

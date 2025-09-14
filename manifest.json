@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "HundredX GO Scores for AI Results",
+  "version": "0.1.0",
+  "description": "Injects polished GO score badges and a comparison panel into Claude/Perplexity results for commercial queries.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://claude.ai/*",
+    "*://perplexity.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://claude.ai/*",
+        "*://perplexity.ai/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "panel.html",
+        "brands.json",
+        "fonts/*",
+        "icons/*",
+        "HundredX+Logo+-+Blue+Registered-640w.webp"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ]
+}
