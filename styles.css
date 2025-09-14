@@ -224,3 +224,154 @@
   font-weight: 500;
   letter-spacing: 0.025em;
 }
+
+/* HundredX Response Panel - Improved Layout */
+.hx-response-container {
+  display: flex;
+  position: relative;
+  max-width: none;
+  margin: 0;
+  gap: 24px;
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  padding: 0 40px;
+  box-sizing: border-box;
+  align-items: flex-start;
+}
+
+.hx-response-panel {
+  flex: 0 0 420px;
+  min-width: 380px;
+  max-width: 500px;
+  background: transparent;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 138, 209, 0.1);
+  position: relative;
+}
+
+.hx-response-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0, 138, 209, 0.08);
+  background: rgba(0, 138, 209, 0.02);
+  border-radius: 8px 8px 0 0;
+}
+
+.hx-response-logo {
+  height: 16px;
+  width: auto;
+  opacity: 0.9;
+}
+
+.hx-response-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0;
+}
+
+.hx-response-content {
+  padding: 16px;
+  font-family: inherit;
+  line-height: 1.6;
+  color: inherit;
+}
+
+.hx-response-content h3 {
+  margin: 16px 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.hx-response-content p {
+  margin: 12px 0;
+  color: inherit;
+}
+
+.hx-response-content ul {
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.hx-response-content li {
+  margin: 4px 0;
+  color: inherit;
+}
+
+.hx-response-content strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+/* HX attribution styling */
+.hx-attribution {
+  color: #008ad1;
+  font-weight: 600;
+  background: rgba(0, 138, 209, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.hx-response-loading {
+  padding: 20px;
+  text-align: center;
+  color: #64748b;
+  font-style: italic;
+}
+
+.hx-response-error {
+  padding: 16px;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.1);
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .hx-response-container {
+    flex-direction: column;
+  }
+  
+  .hx-response-panel {
+    margin-top: 16px;
+  }
+}
+
+/* Claude response styling within our container */
+.hx-response-container > div:first-child {
+  flex: 1;
+  min-width: 400px;
+  max-width: none;
+  padding-right: 8px;
+}
+
+/* Container overflow and spacing */
+.hx-response-container {
+  overflow-x: auto;
+  margin-bottom: 24px;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 1400px) {
+  .hx-response-container {
+    width: 100%;
+    margin-left: 0;
+    padding: 0 20px;
+  }
+  
+  .hx-response-panel {
+    flex: 0 0 380px;
+    min-width: 320px;
+    max-width: 400px;
+  }
+  
+  .hx-response-container > div:first-child {
+    min-width: 350px;
+  }
+}
