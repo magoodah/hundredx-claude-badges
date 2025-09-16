@@ -260,11 +260,6 @@
     const header = document.createElement('div');
     header.className = 'hx-response-header';
     
-    // Add status indicator
-    const statusIndicator = document.createElement('div');
-    statusIndicator.className = 'hx-status-indicator loading';
-    header.appendChild(statusIndicator);
-    
     const logo = document.createElement('img');
     logo.src = LOGO_URL;
     logo.alt = 'HundredX';
@@ -274,21 +269,41 @@
     title.className = 'hx-response-title';
     title.textContent = 'Human Verified Insights';
     
+    // Create grouped status area (loading + status dot)
+    const statusArea = document.createElement('div');
+    statusArea.className = 'hx-status-area';
+    
+    // Create loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'hx-header-loading';
+    loadingIndicator.innerHTML = `
+      <div class="hx-header-spinner"></div>
+      <span class="hx-header-loading-text">Loading insights...</span>
+    `;
+    
+    // Create status indicator
+    const statusIndicator = document.createElement('div');
+    statusIndicator.className = 'hx-status-indicator loading';
+    
+    statusArea.appendChild(loadingIndicator);
+    statusArea.appendChild(statusIndicator);
+    
     header.appendChild(logo);
     header.appendChild(title);
+    header.appendChild(statusArea);
     
     const content = document.createElement('div');
     content.className = 'hx-response-content';
-    const loadingHTML = createLoadingContent();
-    content.innerHTML = loadingHTML;
+    // Start with empty content - loading indicator is now in header
+    content.innerHTML = '';
     
     panel.appendChild(header);
     panel.appendChild(content);
     
-    debugLog('🎯 Loading content inserted into panel:', content.innerHTML.slice(0, 100) + '...');
+    debugLog('🎯 Header loading indicator added to panel');
     debugLog('🎯 Panel classes:', panel.className);
     debugLog('📍 Panel parent:', panel.parentElement ? 'has parent' : 'no parent yet');
-    debugLog('HundredX panel created with loading spinner');
+    debugLog('HundredX panel created with header loading indicator');
     return panel;
   }
 
@@ -321,9 +336,14 @@
       formattedContent = `<p>${formattedContent}</p>`;
     }
 
-    // Add sources if available
+    // Add sources if available and not already included in answer
     let sourcesContent = '';
-    if (apiResponse.sources && apiResponse.sources.length > 0) {
+    const hasSourceInAnswer = formattedContent.toLowerCase().includes('source:');
+    const hasValidSource = apiResponse.sources && 
+                          apiResponse.sources.length > 0 && 
+                          !apiResponse.sources[0].description.includes('0 customer feedback responses');
+    
+    if (hasValidSource && !hasSourceInAnswer) {
       sourcesContent = `
         <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(0, 138, 209, 0.1);">
           <p style="font-size: 12px; color: #64748b; margin: 4px 0;">
@@ -481,9 +501,14 @@
         statusIndicator.className = 'hx-status-indicator loading';
       }
       
-      // Show loading spinner again
+      // Progressive Disclosure: Show loading text again during retry
       const contentDiv = currentPanel.querySelector('.hx-response-content');
-      contentDiv.innerHTML = createLoadingContent();
+      const headerLoading = currentPanel.querySelector('.hx-header-loading');
+      
+      contentDiv.innerHTML = '';
+      if (headerLoading) {
+        headerLoading.style.display = 'flex';
+      }
       
       // Make API call
       const apiResponse = await api.processQuery(currentQuery);
@@ -504,6 +529,12 @@
     const updatePanelContent = (panel, apiResponse) => {
       const contentDiv = panel.querySelector('.hx-response-content');
       const statusIndicator = panel.querySelector('.hx-status-indicator');
+      const headerLoading = panel.querySelector('.hx-header-loading');
+      
+      // Progressive Disclosure: Hide loading text, keep status dot
+      if (headerLoading) {
+        headerLoading.style.display = 'none';
+      }
       
       if (apiResponse.success && !apiResponse._errorType) {
         // Success case
