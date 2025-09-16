@@ -24,13 +24,14 @@
     }
 
     async processQuery(query, retryCount = 0) {
-      debugLog('Making API call with query:', query, `(attempt ${retryCount + 1})`);
+      const apiUrl = `${API_BASE_URL}/api/answer`;
+      debugLog(`🌐 API CALL: ${apiUrl}`, query, `(attempt ${retryCount + 1})`);
       
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        const response = await fetch(`${API_BASE_URL}/api/answer`, {
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -38,6 +39,8 @@
           body: JSON.stringify({ query }),
           signal: controller.signal
         });
+
+        debugLog(`📡 API RESPONSE: Status ${response.status} from ${response.url}`);
 
         clearTimeout(timeoutId);
 
@@ -52,7 +55,8 @@
         }
 
         const result = await response.json();
-        debugLog('API response received:', result);
+        debugLog('✅ API RESPONSE DATA:', result);
+        debugLog('🔍 Data Source Check:', result.answer?.includes('[HX]') ? 'LIVE API' : 'POSSIBLE MOCK');
         return { ...result, _errorType: null };
 
       } catch (error) {
@@ -188,34 +192,17 @@
     return null;
   }
 
-  // Create skeleton loading content
-  function createSkeletonContent() {
-    return `
-      <div class="hx-skeleton-container">
-        <div class="hx-skeleton-title"></div>
-        <div class="hx-skeleton-line wide"></div>
-        <div class="hx-skeleton-line medium"></div>
-        <div class="hx-skeleton-line narrow"></div>
-        
-        <div style="margin: 20px 0 16px 0;">
-          <div class="hx-skeleton-line short"></div>
-        </div>
-        
-        <div class="hx-skeleton-bullet">
-          <div class="hx-skeleton-line medium"></div>
-        </div>
-        <div class="hx-skeleton-bullet">
-          <div class="hx-skeleton-line narrow"></div>
-        </div>
-        <div class="hx-skeleton-bullet">
-          <div class="hx-skeleton-line wide"></div>
-        </div>
-        
-        <div class="hx-skeleton-source">
-          <div class="hx-skeleton-line short"></div>
-        </div>
+  // Create simple loading content
+  function createLoadingContent() {
+    debugLog('🔄 Creating simple loading content');
+    const loadingHTML = `
+      <div class="hx-loading-container">
+        <div class="hx-spinner"></div>
+        <div class="hx-loading-text">Loading HundredX insights...</div>
       </div>
     `;
+    debugLog('✅ Loading HTML created:', loadingHTML.length + ' characters');
+    return loadingHTML;
   }
 
   // Create enhanced error content
@@ -292,12 +279,16 @@
     
     const content = document.createElement('div');
     content.className = 'hx-response-content';
-    content.innerHTML = createSkeletonContent();
+    const loadingHTML = createLoadingContent();
+    content.innerHTML = loadingHTML;
     
     panel.appendChild(header);
     panel.appendChild(content);
     
-    debugLog('HundredX panel created with skeleton loading');
+    debugLog('🎯 Loading content inserted into panel:', content.innerHTML.slice(0, 100) + '...');
+    debugLog('🎯 Panel classes:', panel.className);
+    debugLog('📍 Panel parent:', panel.parentElement ? 'has parent' : 'no parent yet');
+    debugLog('HundredX panel created with loading spinner');
     return panel;
   }
 
@@ -433,12 +424,43 @@
     // Add HundredX panel
     const hxPanel = createHundredXPanel();
     container.appendChild(hxPanel);
+    
+    debugLog('🔴 PANEL ADDED TO DOM - should be visible now!');
+    debugLog('🔴 Container parent:', container.parentElement ? 'has parent' : 'no parent');
+    debugLog('🔴 Panel parent:', hxPanel.parentElement ? 'has parent' : 'no parent');
+    debugLog('🔴 Panel in DOM:', document.contains(hxPanel) ? 'YES' : 'NO');
 
     // Trigger entrance animation
     requestAnimationFrame(() => {
       hxPanel.classList.add('hx-animate-in');
       debugLog('🎬 Panel entrance animation triggered');
     });
+
+    // Make API call to get HundredX response (MOVED HERE - after panel is in DOM)
+    setTimeout(async () => {
+      try {
+        debugLog('🕐 STARTING 3 second delay to show skeleton loading...');
+        debugLog('🟡 Current time:', new Date().toLocaleTimeString());
+        
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds
+        
+        debugLog('🟢 3 second delay COMPLETE, making API call...');
+        debugLog('🟢 Current time:', new Date().toLocaleTimeString());
+        
+        const apiResponse = await api.processQuery(query);
+        updatePanelContent(hxPanel, apiResponse);
+        
+        debugLog('✅ HundredX panel created and populated');
+      } catch (error) {
+        debugLog('❌ Unexpected error in panel processing:', error);
+        updatePanelContent(hxPanel, {
+          success: false,
+          _errorType: 'generic',
+          error: error.message,
+          _retryable: true
+        });
+      }
+    }, 100); // Small delay to ensure panel is fully rendered
 
     // Store references for retry functionality
     let currentQuery = query;
@@ -459,9 +481,9 @@
         statusIndicator.className = 'hx-status-indicator loading';
       }
       
-      // Show skeleton loading again
+      // Show loading spinner again
       const contentDiv = currentPanel.querySelector('.hx-response-content');
-      contentDiv.innerHTML = createSkeletonContent();
+      contentDiv.innerHTML = createLoadingContent();
       
       // Make API call
       const apiResponse = await api.processQuery(currentQuery);
@@ -508,22 +530,6 @@
         debugLog('🎬 Content animation triggered');
       }, 300);
     };
-
-    // Make API call to get HundredX response
-    try {
-      const apiResponse = await api.processQuery(query);
-      updatePanelContent(hxPanel, apiResponse);
-      
-      debugLog('✅ HundredX panel created and populated');
-    } catch (error) {
-      debugLog('❌ Unexpected error in panel processing:', error);
-      updatePanelContent(hxPanel, {
-        success: false,
-        _errorType: 'generic',
-        error: error.message,
-        _retryable: true
-      });
-    }
   }
 
   // Find Claude response containers - UPDATED

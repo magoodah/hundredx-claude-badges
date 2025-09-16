@@ -255,9 +255,9 @@
 }
 
 .hx-response-panel {
-  flex: 0 0 420px;
-  min-width: 380px;
-  max-width: 500px;
+  flex: 1;
+  min-width: 400px;
+  max-width: none;
   background: transparent;
   border-radius: 8px;
   border: 1px solid rgba(0, 138, 209, 0.1);
@@ -391,9 +391,9 @@
   }
   
   .hx-response-panel {
-    flex: 0 0 380px;
+    flex: 1;
     min-width: 320px;
-    max-width: 400px;
+    max-width: none;
   }
   
   .hx-response-container > div:first-child {
@@ -466,87 +466,35 @@
   box-shadow: 0 2px 8px rgba(0, 138, 209, 0.25);
 }
 
-/* Skeleton Loading UI */
-.hx-skeleton-container {
-  padding: 16px;
-  animation: fadeIn 0.3s ease;
-}
-
-.hx-skeleton-line {
-  height: 16px;
-  background: linear-gradient(90deg, 
-    rgba(0, 138, 209, 0.08) 25%, 
-    rgba(0, 138, 209, 0.15) 50%, 
-    rgba(0, 138, 209, 0.08) 75%
-  );
-  background-size: 200% 100%;
-  border-radius: 4px;
-  margin-bottom: 12px;
-  animation: shimmer 1.5s infinite;
-  position: relative;
-  overflow: hidden;
-}
-
-.hx-skeleton-line.wide {
-  width: 100%;
-}
-
-.hx-skeleton-line.medium {
-  width: 75%;
-}
-
-.hx-skeleton-line.narrow {
-  width: 60%;
-}
-
-.hx-skeleton-line.short {
-  width: 40%;
-  height: 12px;
-}
-
-.hx-skeleton-title {
-  height: 20px;
-  width: 85%;
-  margin-bottom: 16px;
-  background: linear-gradient(90deg, 
-    rgba(0, 138, 209, 0.12) 25%, 
-    rgba(0, 138, 209, 0.25) 50%, 
-    rgba(0, 138, 209, 0.12) 75%
-  );
-  background-size: 200% 100%;
-  border-radius: 6px;
-  animation: shimmer 1.5s infinite;
-}
-
-.hx-skeleton-bullet {
+/* Simple Loading Spinner */
+.hx-loading-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  margin-bottom: 8px;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
 }
 
-.hx-skeleton-bullet::before {
-  content: '';
-  width: 6px;
-  height: 6px;
+.hx-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(0, 138, 209, 0.2);
+  border-top: 3px solid #008ad1;
   border-radius: 50%;
-  background: rgba(0, 138, 209, 0.3);
-  margin-right: 12px;
-  flex-shrink: 0;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
 }
 
-.hx-skeleton-source {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(0, 138, 209, 0.1);
+.hx-loading-text {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 @keyframes fadeIn {
