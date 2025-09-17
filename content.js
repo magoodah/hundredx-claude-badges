@@ -10,10 +10,89 @@
   
   // Track processed responses to avoid duplicates
   const processedResponses = new WeakSet();
+  
+  // Track processed query contexts to prevent duplicate API calls
+  const processedQueryContexts = new Set();
+  
+  // Cache for API responses to avoid duplicate calls and enable parallel processing
+  const queryCache = new Map(); // Map<query, {promise, result, timestamp}>
+  
+  // Clean up old contexts and cache periodically to prevent memory buildup
+  setInterval(() => {
+    if (processedQueryContexts.size > 50) {
+      debugLog('🧹 Cleaning up old query contexts');
+      processedQueryContexts.clear();
+    }
+    
+    // Clean up cache entries older than 5 minutes
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    for (const [query, data] of queryCache.entries()) {
+      if (data.timestamp < fiveMinutesAgo) {
+        queryCache.delete(query);
+      }
+    }
+  }, 60000); // Clean every minute
 
   // Debug logging
   function debugLog(message, data = null) {
     console.log(`🔍 HundredX DEBUG: ${message}`, data || '');
+  }
+
+  // Create unique context identifier for query + response to prevent duplicates
+  function createQueryContext(query, responseElement) {
+    // Use query + response length + element position as unique identifier
+    const responseText = responseElement.textContent?.trim() || '';
+    const responseLength = responseText.length;
+    const elementId = responseElement.getAttribute('data-testid') || 
+                     responseElement.className || 
+                     'unknown';
+    
+    return `${query}|${responseLength}|${elementId}`;
+  }
+
+  // Process query immediately when user submits (parallel with Claude)
+  async function processQueryEarly(query) {
+    debugLog('⚡ Processing query early (parallel with Claude):', query);
+    
+    // Check if this looks like a commercial query
+    const isCommercial = /best|compare|vs|versus|top|which|better|good|recommend|price|quality|service|value|store|brand/i.test(query);
+    if (!isCommercial) {
+      debugLog('❌ Not a commercial query, skipping early processing');
+      return null;
+    }
+
+    // Check if already in cache or being processed
+    if (queryCache.has(query)) {
+      debugLog('🔄 Query already being processed or cached');
+      return queryCache.get(query);
+    }
+
+    // Start API call immediately
+    const apiPromise = api.processQuery(query);
+    const cacheEntry = {
+      promise: apiPromise,
+      result: null,
+      timestamp: Date.now()
+    };
+    
+    queryCache.set(query, cacheEntry);
+    debugLog('✅ Started early API call for query:', query);
+
+    try {
+      const result = await apiPromise;
+      cacheEntry.result = result;
+      debugLog('✅ Early API call completed:', query);
+      return cacheEntry;
+    } catch (error) {
+      debugLog('❌ Early API call failed:', error);
+      cacheEntry.result = {
+        success: false,
+        _errorType: 'generic',
+        error: error.message,
+        _retryable: true
+      };
+      return cacheEntry;
+    }
   }
 
   // API client with enhanced error handling
@@ -124,6 +203,143 @@
   }
 
   const api = new HundredXAPI();
+
+  // Global references for retry functionality
+  let currentQuery = null;
+  let currentPanel = null;
+
+  // Global retry/dismiss functions (defined once, used by all panels)
+  window.hxRetry = async () => {
+    if (!currentPanel || !currentQuery) {
+      debugLog('❌ No panel or query available for retry');
+      return;
+    }
+
+    debugLog('🔄 Retrying HundredX API call');
+    const retryButton = currentPanel.querySelector('.hx-retry-button');
+    const statusIndicator = currentPanel.querySelector('.hx-status-indicator');
+    
+    if (retryButton) {
+      retryButton.classList.add('loading');
+      retryButton.innerHTML = '<span class="hx-spinner"></span> Retrying...';
+    }
+    
+    if (statusIndicator) {
+      statusIndicator.className = 'hx-status-indicator loading';
+    }
+    
+    // Progressive Disclosure: Show loading text again during retry
+    const contentDiv = currentPanel.querySelector('.hx-response-content');
+    const headerLoading = currentPanel.querySelector('.hx-header-loading');
+    
+    contentDiv.innerHTML = '';
+    if (headerLoading) {
+      headerLoading.style.display = 'flex';
+    }
+    
+    // Function to update panel content based on API response
+    const updatePanelContent = (panel, apiResponse) => {
+      const contentDiv = panel.querySelector('.hx-response-content');
+      const statusIndicator = panel.querySelector('.hx-status-indicator');
+      const headerLoading = panel.querySelector('.hx-header-loading');
+      
+      // Progressive Disclosure: Hide loading text, keep status dot
+      if (headerLoading) {
+        headerLoading.style.display = 'none';
+      }
+      
+      if (apiResponse.success && !apiResponse._errorType) {
+        // Success case
+        contentDiv.innerHTML = formatHundredXContent(apiResponse);
+        if (statusIndicator) {
+          statusIndicator.className = 'hx-status-indicator';
+        }
+        debugLog('✅ HundredX panel updated with success content');
+      } else {
+        // Error case  
+        const errorType = apiResponse._errorType || 'generic';
+        const retryable = apiResponse._retryable || false;
+        
+        contentDiv.innerHTML = createErrorContent(errorType, apiResponse.error, retryable);
+        if (statusIndicator) {
+          statusIndicator.className = 'hx-status-indicator error';
+        }
+        debugLog('❌ HundredX panel updated with error content:', errorType);
+      }
+      
+      // Trigger content animation
+      setTimeout(() => {
+        panel.classList.add('hx-content-loaded');
+        debugLog('🎬 Content animation triggered');
+      }, 300);
+    };
+    
+    // Make API call
+    try {
+      const apiResponse = await api.processQuery(currentQuery);
+      updatePanelContent(currentPanel, apiResponse);
+    } catch (error) {
+      debugLog('❌ Retry failed:', error);
+      updatePanelContent(currentPanel, {
+        success: false,
+        _errorType: 'generic',
+        error: 'Retry failed: ' + error.message,
+        _retryable: true
+      });
+    }
+  };
+  
+  window.hxDismiss = () => {
+    if (!currentPanel) {
+      debugLog('❌ No panel available for dismiss');
+      return;
+    }
+
+    debugLog('❌ Dismissing HundredX panel');
+    const container = currentPanel.closest('.hx-response-container');
+    if (container) {
+      container.style.opacity = '0';
+      container.style.transform = 'translateY(-10px)';
+      setTimeout(() => container.remove(), 300);
+    }
+  };
+
+  // Function to update panel content based on API response
+  function updatePanelContent(panel, apiResponse) {
+    const contentDiv = panel.querySelector('.hx-response-content');
+    const statusIndicator = panel.querySelector('.hx-status-indicator');
+    const headerLoading = panel.querySelector('.hx-header-loading');
+    
+    // Progressive Disclosure: Hide loading text, keep status dot
+    if (headerLoading) {
+      headerLoading.style.display = 'none';
+    }
+    
+    if (apiResponse.success && !apiResponse._errorType) {
+      // Success case
+      contentDiv.innerHTML = formatHundredXContent(apiResponse);
+      if (statusIndicator) {
+        statusIndicator.className = 'hx-status-indicator';
+      }
+      debugLog('✅ HundredX panel updated with success content');
+    } else {
+      // Error case  
+      const errorType = apiResponse._errorType || 'generic';
+      const retryable = apiResponse._retryable || false;
+      
+      contentDiv.innerHTML = createErrorContent(errorType, apiResponse.error, retryable);
+      if (statusIndicator) {
+        statusIndicator.className = 'hx-status-indicator error';
+      }
+      debugLog('❌ HundredX panel updated with error content:', errorType);
+    }
+    
+    // Trigger content animation
+    setTimeout(() => {
+      panel.classList.add('hx-content-loaded');
+      debugLog('🎬 Content animation triggered');
+    }, 300);
+  }
 
   // Extract query from Claude's conversation context - UPDATED
   function extractQueryFromContext(responseElement) {
@@ -267,7 +483,7 @@
     
     const title = document.createElement('h4');
     title.className = 'hx-response-title';
-    title.textContent = 'Human Verified Insights';
+    title.textContent = 'Powered by Actual Human Reviews';
     
     // Create grouped status area (loading + status dot)
     const statusArea = document.createElement('div');
@@ -307,9 +523,9 @@
     return panel;
   }
 
-  // Format HundredX response content
+  // Format HundredX response content using Marked.js
   function formatHundredXContent(apiResponse) {
-    debugLog('Formatting HundredX content:', apiResponse);
+    debugLog('Formatting HundredX content with Marked.js:', apiResponse);
     
     if (!apiResponse.success) {
       return `<div class="hx-response-error">
@@ -323,17 +539,28 @@
       </div>`;
     }
 
-    // Convert markdown-like formatting to HTML and add HX attribution styling
-    let formattedContent = apiResponse.answer
-      .replace(/\*\*\[HX\]\*\*/g, '<span class="hx-attribution">[HX]</span>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br>');
+    // First, handle HX attribution tags before markdown processing
+    let contentWithHXTags = apiResponse.answer
+      .replace(/\*\*\[HX\]\*\*/g, '<span class="hx-attribution">[HX]</span>');
 
-    // Wrap in paragraphs if not already formatted
-    if (!formattedContent.includes('<p>')) {
-      formattedContent = `<p>${formattedContent}</p>`;
+    // Use Marked.js to convert markdown to HTML
+    let formattedContent;
+    try {
+      // Configure marked for safe rendering
+      marked.setOptions({
+        breaks: true,        // Convert line breaks to <br>
+        gfm: true,          // GitHub flavored markdown
+        sanitize: false,    // We trust our API content
+        smartLists: true,   // Use smarter list behavior
+        smartypants: false  // Don't convert quotes/dashes
+      });
+      
+      formattedContent = marked.parse(contentWithHXTags);
+      debugLog('✅ Markdown converted successfully with Marked.js');
+    } catch (error) {
+      debugLog('❌ Marked.js error, falling back to plain text:', error);
+      // Fallback to simple HTML escaping if Marked fails
+      formattedContent = `<p>${contentWithHXTags.replace(/\n/g, '<br>')}</p>`;
     }
 
     // Add sources if available and not already included in answer
@@ -380,17 +607,11 @@
       }
     }
 
-    // Look for signs of substantial content
-    const hasMultipleParagraphs = text.split('\n\n').length > 2;
-    const hasDetailedInfo = /\d+%|\$[\d,]+|[\d,]+\s+(million|billion|responses|reviews)/i.test(text);
-    const hasStructuredContent = /^(#|##|\*\*|1\.|•)/m.test(text);
-
-    const isSubstantial = hasMultipleParagraphs || hasDetailedInfo || hasStructuredContent;
+    // Much more lenient substantiality check - if it's long enough and not preparatory, it's substantial
+    const isSubstantial = text.length >= 200; // Simple length check
+    
     debugLog('Response substantiality check:', {
       length: text.length,
-      hasMultipleParagraphs,
-      hasDetailedInfo,
-      hasStructuredContent,
       isSubstantial
     });
 
@@ -431,6 +652,15 @@
       return;
     }
 
+    // Create unique context to prevent duplicate panels for same query+response
+    const queryContext = createQueryContext(query, responseElement);
+    if (processedQueryContexts.has(queryContext)) {
+      debugLog('❌ Query context already processed, skipping panel creation:', queryContext);
+      return;
+    }
+    processedQueryContexts.add(queryContext);
+    debugLog('✅ New query context, creating panel:', queryContext);
+
     // Create container for side-by-side layout
     const container = document.createElement('div');
     container.className = 'hx-response-container';
@@ -456,21 +686,38 @@
       debugLog('🎬 Panel entrance animation triggered');
     });
 
-    // Make API call to get HundredX response (MOVED HERE - after panel is in DOM)
+    // Get HundredX response from cache or make new API call
     setTimeout(async () => {
       try {
-        debugLog('🕐 STARTING 3 second delay to show skeleton loading...');
-        debugLog('🟡 Current time:', new Date().toLocaleTimeString());
+        let apiResponse;
         
-        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds
+        // Check if we have cached result from early processing
+        if (queryCache.has(query)) {
+          debugLog('🎯 Using cached result from early processing:', query);
+          const cacheEntry = queryCache.get(query);
+          
+          if (cacheEntry.result) {
+            // Result already available
+            apiResponse = cacheEntry.result;
+            debugLog('✅ Using immediate cached result');
+          } else {
+            // Still processing, wait for it
+            debugLog('⏳ Waiting for early processing to complete...');
+            await cacheEntry.promise;
+            apiResponse = cacheEntry.result;
+            debugLog('✅ Early processing completed, using result');
+          }
+        } else {
+          // No cache, make API call now (fallback)
+          debugLog('🔄 No cached result, making API call now...');
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Small delay for loading UI
+          apiResponse = await api.processQuery(query);
+          debugLog('✅ Direct API call completed');
+        }
         
-        debugLog('🟢 3 second delay COMPLETE, making API call...');
-        debugLog('🟢 Current time:', new Date().toLocaleTimeString());
-        
-        const apiResponse = await api.processQuery(query);
         updatePanelContent(hxPanel, apiResponse);
-        
         debugLog('✅ HundredX panel created and populated');
+        
       } catch (error) {
         debugLog('❌ Unexpected error in panel processing:', error);
         updatePanelContent(hxPanel, {
@@ -482,85 +729,9 @@
       }
     }, 100); // Small delay to ensure panel is fully rendered
 
-    // Store references for retry functionality
-    let currentQuery = query;
-    let currentPanel = hxPanel;
-    
-    // Global retry/dismiss functions
-    window.hxRetry = async () => {
-      debugLog('🔄 Retrying HundredX API call');
-      const retryButton = currentPanel.querySelector('.hx-retry-button');
-      const statusIndicator = currentPanel.querySelector('.hx-status-indicator');
-      
-      if (retryButton) {
-        retryButton.classList.add('loading');
-        retryButton.innerHTML = '<span class="hx-spinner"></span> Retrying...';
-      }
-      
-      if (statusIndicator) {
-        statusIndicator.className = 'hx-status-indicator loading';
-      }
-      
-      // Progressive Disclosure: Show loading text again during retry
-      const contentDiv = currentPanel.querySelector('.hx-response-content');
-      const headerLoading = currentPanel.querySelector('.hx-header-loading');
-      
-      contentDiv.innerHTML = '';
-      if (headerLoading) {
-        headerLoading.style.display = 'flex';
-      }
-      
-      // Make API call
-      const apiResponse = await api.processQuery(currentQuery);
-      updatePanelContent(currentPanel, apiResponse);
-    };
-    
-    window.hxDismiss = () => {
-      debugLog('❌ Dismissing HundredX panel');
-      const container = currentPanel.closest('.hx-response-container');
-      if (container) {
-        container.style.opacity = '0';
-        container.style.transform = 'translateY(-10px)';
-        setTimeout(() => container.remove(), 300);
-      }
-    };
-
-    // Function to update panel content based on API response
-    const updatePanelContent = (panel, apiResponse) => {
-      const contentDiv = panel.querySelector('.hx-response-content');
-      const statusIndicator = panel.querySelector('.hx-status-indicator');
-      const headerLoading = panel.querySelector('.hx-header-loading');
-      
-      // Progressive Disclosure: Hide loading text, keep status dot
-      if (headerLoading) {
-        headerLoading.style.display = 'none';
-      }
-      
-      if (apiResponse.success && !apiResponse._errorType) {
-        // Success case
-        contentDiv.innerHTML = formatHundredXContent(apiResponse);
-        if (statusIndicator) {
-          statusIndicator.className = 'hx-status-indicator';
-        }
-        debugLog('✅ HundredX panel updated with success content');
-      } else {
-        // Error case  
-        const errorType = apiResponse._errorType || 'generic';
-        const retryable = apiResponse._retryable || false;
-        
-        contentDiv.innerHTML = createErrorContent(errorType, apiResponse.error, retryable);
-        if (statusIndicator) {
-          statusIndicator.className = 'hx-status-indicator error';
-        }
-        debugLog('❌ HundredX panel updated with error content:', errorType);
-      }
-      
-      // Trigger content animation
-      setTimeout(() => {
-        panel.classList.add('hx-content-loaded');
-        debugLog('🎬 Content animation triggered');
-      }, 300);
-    };
+    // Set global references for retry functionality
+    currentQuery = query;
+    currentPanel = hxPanel;
   }
 
   // Find Claude response containers - UPDATED
@@ -640,6 +811,130 @@
     debugLog('✅ Finished processing all responses');
   }
 
+  // Set up input monitoring for early query processing
+  function setupInputMonitoring() {
+    debugLog('🎯 Setting up input monitoring for early processing...');
+    
+    // Find Claude's input field
+    const findInputField = () => {
+      const selectors = [
+        'textarea[placeholder*="Message"]',
+        'textarea[placeholder*="message"]', 
+        'textarea[data-testid*="input"]',
+        'textarea[contenteditable="true"]',
+        '.ProseMirror',
+        '[data-testid="chat-input"]',
+        'textarea',
+        'div[contenteditable="true"]'
+      ];
+      
+      debugLog('🔍 Searching for input field...');
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          debugLog('✅ Found input field with selector:', selector);
+          debugLog('📝 Input field details:', {
+            tagName: element.tagName,
+            placeholder: element.placeholder,
+            className: element.className,
+            id: element.id
+          });
+          return element;
+        } else {
+          debugLog('❌ No match for selector:', selector);
+        }
+      }
+      debugLog('🚨 NO INPUT FIELD FOUND! Available textareas/inputs:');
+      const allInputs = document.querySelectorAll('textarea, input[type="text"], div[contenteditable="true"]');
+      allInputs.forEach((input, index) => {
+        debugLog(`  ${index}: ${input.tagName} - class: "${input.className}" - placeholder: "${input.placeholder}" - id: "${input.id}"`);
+      });
+      return null;
+    };
+
+    const setupInputListener = () => {
+      const inputField = findInputField();
+      if (!inputField) {
+        debugLog('❌ Could not find input field, retrying...');
+        setTimeout(setupInputListener, 1000);
+        return;
+      }
+
+      // Listen for Enter key or form submission
+      const handleSubmit = (event) => {
+        debugLog('🎯 Input event detected:', {
+          type: event.type,
+          key: event.key,
+          shiftKey: event.shiftKey,
+          target: event.target.tagName
+        });
+        
+        if (event.type === 'keydown' && event.key !== 'Enter') {
+          debugLog('⏭️ Not Enter key, ignoring');
+          return;
+        }
+        if (event.type === 'keydown' && event.shiftKey) {
+          debugLog('⏭️ Shift+Enter detected, allowing new line');
+          return; // Allow Shift+Enter for new lines
+        }
+        
+        const query = inputField.value || inputField.textContent || '';
+        debugLog('📝 Extracted query:', `"${query}" (length: ${query.length})`);
+        
+        if (query.trim().length > 10) {
+          debugLog('🚀 User submitted query, starting early processing:', query.trim());
+          processQueryEarly(query.trim());
+        } else {
+          debugLog('❌ Query too short, not processing');
+        }
+      };
+
+      debugLog('🎧 Adding keydown listener to input field');
+      inputField.addEventListener('keydown', handleSubmit);
+      
+      // Also listen for any form submissions
+      const form = inputField.closest('form');
+      if (form) {
+        form.addEventListener('submit', handleSubmit);
+      }
+      
+      debugLog('✅ Input monitoring set up');
+    };
+
+    // Also try to monitor submit buttons as backup
+    const setupButtonListener = () => {
+      debugLog('🔍 Setting up button listener as backup...');
+      const buttonSelectors = [
+        'button[type="submit"]',
+        'button[data-testid*="send"]',
+        'button[aria-label*="Send"]',
+        'button[aria-label*="send"]',
+        '[data-testid="send-button"]'
+      ];
+      
+      for (const selector of buttonSelectors) {
+        const buttons = document.querySelectorAll(selector);
+        buttons.forEach(button => {
+          debugLog('🎯 Found submit button:', selector);
+          button.addEventListener('click', (event) => {
+            debugLog('🎯 Submit button clicked!');
+            const inputField = findInputField();
+            if (inputField) {
+              const query = inputField.value || inputField.textContent || '';
+              if (query.trim().length > 10) {
+                debugLog('🚀 Button click: starting early processing:', query.trim());
+                processQueryEarly(query.trim());
+              }
+            }
+          });
+        });
+      }
+    };
+
+    setupInputListener();
+    setupButtonListener();
+  }
+
   // Set up DOM observation for new responses
   function setupObserver() {
     debugLog('Setting up DOM observer...');
@@ -682,6 +977,7 @@
 
   // Initialize the extension
   async function init() {
+    console.log('🚨🚨🚨 HUNDREDX EXTENSION LOADING 🚨🚨🚨');
     debugLog('🚀 Initializing HundredX extension...');
     debugLog('Current URL:', window.location.href);
 
@@ -698,6 +994,14 @@
 
     // Set up observer for new responses
     setupObserver();
+
+    // Set up input monitoring for early query processing
+    try {
+      setupInputMonitoring();
+      debugLog('✅ Input monitoring setup completed');
+    } catch (error) {
+      debugLog('❌ Error setting up input monitoring:', error);
+    }
 
     debugLog('✅ HundredX extension initialized successfully');
   }

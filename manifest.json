@@ -25,6 +25,7 @@
         "*://perplexity.ai/*"
       ],
       "js": [
+        "marked.min.js",
         "content.js"
       ],
       "css": [
