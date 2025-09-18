@@ -476,14 +476,10 @@
     const header = document.createElement('div');
     header.className = 'hx-response-header';
     
-    const logo = document.createElement('img');
-    logo.src = LOGO_URL;
-    logo.alt = 'HundredX';
-    logo.className = 'hx-response-logo';
-    
     const title = document.createElement('h4');
     title.className = 'hx-response-title';
-    title.textContent = 'Powered by Actual Human Reviews';
+    title.innerHTML = 'Powered by actual human reviews from <img src="' + LOGO_URL + '" alt="HundredX" style="height: 14px; vertical-align: baseline; margin-left: 4px; display: inline-block; position: relative; top: 1px;">';
+    title.style.whiteSpace = 'nowrap';
     
     // Create grouped status area (loading + status dot)
     const statusArea = document.createElement('div');
@@ -504,7 +500,6 @@
     statusArea.appendChild(loadingIndicator);
     statusArea.appendChild(statusIndicator);
     
-    header.appendChild(logo);
     header.appendChild(title);
     header.appendChild(statusArea);
     
