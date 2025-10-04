@@ -98,7 +98,7 @@
   // API client with enhanced error handling
   class HundredXAPI {
     constructor() {
-      this.timeout = 15000; // 15 second timeout
+      this.timeout = 1200000; // 20 minute timeout (API can take 15+ minutes)
       this.maxRetries = 2;
     }
 
