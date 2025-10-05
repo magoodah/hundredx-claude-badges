@@ -100,22 +100,48 @@
     constructor() {
       this.timeout = 1200000; // 20 minute timeout (API can take 15+ minutes)
       this.maxRetries = 2;
+      this.defaultSettings = {
+        narrativeStyle: 'default',
+        webSearchEnabled: false
+      };
+    }
+
+    // Get user settings from Chrome storage
+    async getSettings() {
+      try {
+        const result = await chrome.storage.sync.get(['hxSettings']);
+        return result.hxSettings || this.defaultSettings;
+      } catch (error) {
+        debugLog('⚠️ Error loading settings, using defaults:', error);
+        return this.defaultSettings;
+      }
     }
 
     async processQuery(query, retryCount = 0) {
       const apiUrl = `${API_BASE_URL}/api/answer`;
       debugLog(`🌐 API CALL: ${apiUrl}`, query, `(attempt ${retryCount + 1})`);
-      
+
       try {
+        // Load user settings from storage
+        const settings = await this.getSettings();
+        debugLog('📋 Using settings:', settings);
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+        // Prepare request body with settings
+        const requestBody = {
+          query,
+          narrativeStyle: settings.narrativeStyle,
+          webSearchEnabled: settings.webSearchEnabled
+        };
 
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ query }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal
         });
 

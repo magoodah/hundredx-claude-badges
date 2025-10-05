@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HundredX Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header with Logo -->
+    <div class="popup-header">
+      <img src="HundredX+Logo+-+Blue+Registered-640w.webp" alt="HundredX" class="popup-logo">
+      <h2 class="popup-title">Settings</h2>
+    </div>
+
+    <!-- Health Status Indicator -->
+    <div class="health-status">
+      <div class="health-indicator">
+        <span class="health-dot" id="healthDot"></span>
+        <span class="health-text" id="healthText">Checking API...</span>
+      </div>
+    </div>
+
+    <!-- Settings Form -->
+    <div class="settings-form">
+      <!-- Narrative Style Dropdown -->
+      <div class="form-group">
+        <label for="narrativeStyle">Narrative Style:</label>
+        <select id="narrativeStyle" class="form-control">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+
+      <!-- Web Search Toggle -->
+      <div class="form-group">
+        <label for="webSearch" class="toggle-label">
+          <span>Allow Web Search:</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="webSearch" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+      </div>
+
+      <!-- Save Button -->
+      <button id="saveSettings" class="btn-primary">Save Settings</button>
+
+      <!-- Status Message -->
+      <div id="statusMessage" class="status-message hidden"></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

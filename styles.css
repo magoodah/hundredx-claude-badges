@@ -331,6 +331,23 @@
   color: inherit;
 }
 
+/* Link styling */
+.hx-response-content a {
+  color: #008ad1;
+  text-decoration: underline;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.hx-response-content a:hover {
+  color: #0077b8;
+  text-decoration-thickness: 2px;
+}
+
+.hx-response-content a:visited {
+  color: #006b9e;
+}
+
 /* HX attribution styling */
 .hx-attribution {
   color: #008ad1;
