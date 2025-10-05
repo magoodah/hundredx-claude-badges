@@ -4,6 +4,7 @@ const API_BASE_URL = 'https://pulse.ngrok.pizza';
 const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 
 // DOM Elements
+let extensionEnabledToggle;
 let narrativeStyleSelect;
 let webSearchToggle;
 let saveButton;
@@ -14,6 +15,7 @@ let healthCheckInterval;
 
 // Default settings
 const DEFAULT_SETTINGS = {
+  extensionEnabled: true,
   narrativeStyle: 'default',
   webSearchEnabled: false
 };
@@ -23,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('HundredX popup loaded');
 
   // Get DOM elements
+  extensionEnabledToggle = document.getElementById('extensionEnabled');
   narrativeStyleSelect = document.getElementById('narrativeStyle');
   webSearchToggle = document.getElementById('webSearch');
   saveButton = document.getElementById('saveSettings');
@@ -42,8 +45,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event listeners
   saveButton.addEventListener('click', saveSettings);
+  extensionEnabledToggle.addEventListener('change', () => {
+    hideStatusMessage();
+    // Update UI state when master toggle changes
+    updateFormState();
+  });
   narrativeStyleSelect.addEventListener('change', () => hideStatusMessage());
   webSearchToggle.addEventListener('change', () => hideStatusMessage());
+
+  // Initialize form state
+  updateFormState();
 });
 
 // Clean up interval when popup closes
@@ -62,6 +73,7 @@ async function loadSettings() {
     console.log('Loaded settings:', settings);
 
     // Apply settings to UI
+    extensionEnabledToggle.checked = settings.extensionEnabled !== undefined ? settings.extensionEnabled : DEFAULT_SETTINGS.extensionEnabled;
     narrativeStyleSelect.value = settings.narrativeStyle || DEFAULT_SETTINGS.narrativeStyle;
     webSearchToggle.checked = settings.webSearchEnabled || DEFAULT_SETTINGS.webSearchEnabled;
   } catch (error) {
@@ -77,6 +89,7 @@ async function saveSettings() {
     saveButton.textContent = 'Saving...';
 
     const settings = {
+      extensionEnabled: extensionEnabledToggle.checked,
       narrativeStyle: narrativeStyleSelect.value,
       webSearchEnabled: webSearchToggle.checked
     };
@@ -180,4 +193,22 @@ function showStatusMessage(message, type) {
 // Hide status message
 function hideStatusMessage() {
   statusMessage.className = 'status-message hidden';
+}
+
+// Update form state based on master toggle
+function updateFormState() {
+  const isEnabled = extensionEnabledToggle.checked;
+
+  // Disable/enable other settings when extension is off
+  narrativeStyleSelect.disabled = !isEnabled;
+  webSearchToggle.disabled = !isEnabled;
+
+  // Visual feedback
+  if (!isEnabled) {
+    narrativeStyleSelect.style.opacity = '0.5';
+    webSearchToggle.parentElement.parentElement.style.opacity = '0.5';
+  } else {
+    narrativeStyleSelect.style.opacity = '1';
+    webSearchToggle.parentElement.parentElement.style.opacity = '1';
+  }
 }

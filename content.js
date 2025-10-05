@@ -53,7 +53,14 @@
   // Process query immediately when user submits (parallel with Claude)
   async function processQueryEarly(query) {
     debugLog('⚡ Processing query early (parallel with Claude):', query);
-    
+
+    // Check if extension is enabled
+    const settings = await api.getSettings();
+    if (!settings.extensionEnabled) {
+      debugLog('❌ Extension is disabled, skipping early processing');
+      return null;
+    }
+
     // Check if this looks like a commercial query
     const isCommercial = /best|compare|vs|versus|top|which|better|good|recommend|price|quality|service|value|store|brand/i.test(query);
     if (!isCommercial) {
@@ -101,6 +108,7 @@
       this.timeout = 1200000; // 20 minute timeout (API can take 15+ minutes)
       this.maxRetries = 2;
       this.defaultSettings = {
+        extensionEnabled: true,
         narrativeStyle: 'default',
         webSearchEnabled: false
       };
@@ -642,7 +650,14 @@
   // Process a Claude response and add HundredX panel
   async function processClaudeResponse(responseElement) {
     debugLog('Processing Claude response:', responseElement);
-    
+
+    // Check if extension is enabled
+    const settings = await api.getSettings();
+    if (!settings.extensionEnabled) {
+      debugLog('❌ Extension is disabled, skipping processing');
+      return;
+    }
+
     if (processedResponses.has(responseElement)) {
       debugLog('❌ Response already processed, skipping');
       return;
@@ -995,6 +1010,27 @@
     debugLog('✅ DOM observer set up');
     return observer;
   }
+
+  // Listen for settings changes
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'sync' && changes.hxSettings) {
+      const newSettings = changes.hxSettings.newValue;
+      const oldSettings = changes.hxSettings.oldValue;
+
+      debugLog('⚙️ Settings changed:', { old: oldSettings, new: newSettings });
+
+      // If extension was toggled off, clear query cache
+      if (oldSettings?.extensionEnabled && !newSettings?.extensionEnabled) {
+        debugLog('🔴 Extension disabled, clearing query cache');
+        queryCache.clear();
+      }
+
+      // If extension was toggled back on
+      if (!oldSettings?.extensionEnabled && newSettings?.extensionEnabled) {
+        debugLog('🟢 Extension re-enabled');
+      }
+    }
+  });
 
   // Initialize the extension
   async function init() {
