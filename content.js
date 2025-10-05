@@ -583,7 +583,17 @@
         smartLists: true,   // Use smarter list behavior
         smartypants: false  // Don't convert quotes/dashes
       });
-      
+
+      // Custom renderer to open links in new tab
+      marked.use({
+        renderer: {
+          link({href, title, text}) {
+            const titleAttr = title ? ` title="${title}"` : '';
+            return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+          }
+        }
+      });
+
       formattedContent = marked.parse(contentWithHXTags);
       debugLog('✅ Markdown converted successfully with Marked.js');
     } catch (error) {
