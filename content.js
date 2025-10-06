@@ -109,8 +109,8 @@
       this.maxRetries = 2;
       this.defaultSettings = {
         extensionEnabled: true,
-        narrativeStyle: 'default',
-        webSearchEnabled: false
+        template_id: '3_tier_consumer_friendly_locked_v3', // API default
+        enable_web_search: false
       };
     }
 
@@ -137,11 +137,13 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        // Prepare request body with settings
+        // Prepare request body with settings (backward compatible)
         const requestBody = {
           query,
-          narrativeStyle: settings.narrativeStyle,
-          webSearchEnabled: settings.webSearchEnabled
+          template_id: settings.template_id || settings.narrativeStyle || this.defaultSettings.template_id,
+          enable_web_search: settings.enable_web_search !== undefined
+            ? settings.enable_web_search
+            : (settings.webSearchEnabled !== undefined ? settings.webSearchEnabled : this.defaultSettings.enable_web_search)
         };
 
         const response = await fetch(apiUrl, {
