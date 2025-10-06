@@ -3,13 +3,17 @@ const cors = require('cors');
 const app = express();
 const PORT = 3000;
 
-// CORS configuration for Chrome extensions and Claude.ai
+// CORS configuration for Chrome extensions and AI platforms
 const corsOptions = {
   origin: [
     /^chrome-extension:\/\/.*/,
     /^http:\/\/localhost:.*/,
     'https://claude.ai',
-    /^https:\/\/.*\.claude\.ai$/
+    /^https:\/\/.*\.claude\.ai$/,
+    'https://gemini.google.com',
+    /^https:\/\/.*\.google\.com$/,
+    'https://perplexity.ai',
+    /^https:\/\/.*\.perplexity\.ai$/
   ],
   credentials: true
 };
@@ -55,31 +59,31 @@ function extractIndustry(query) {
   return 'Superstores'; // Default
 }
 
-function generateMockResponse(query, industry) {
+function generateMockResponse(query, industry, template_id, enable_web_search) {
   const companies = mockCompanies[industry] || mockCompanies['Superstores'];
-  const topCompany = companies.reduce((prev, current) => 
+  const topCompany = companies.reduce((prev, current) =>
     (prev.nps > current.nps) ? prev : current
   );
-  const priceLeader = companies.reduce((prev, current) => 
+  const priceLeader = companies.reduce((prev, current) =>
     (prev.feedback > current.feedback) ? prev : current
   );
-  
+
   const totalResponses = companies.reduce((sum, company) => sum + company.feedback, 0);
-  
+
   const answer = `Based on HundredX customer experience data from ${totalResponses.toLocaleString()} verified responses:
 
 **Customer Satisfaction Leader**
-**[HX]** ${topCompany.name} leads with ${topCompany.nps} NPS and ${topCompany.csat}/5.0 customer satisfaction (${topCompany.feedback.toLocaleString()} responses, T3M ending Aug '25)
+**[HX]** ${topCompany.name} leads with ${topCompany.nps} NPS and ${topCompany.csat}/5.0 customer satisfaction (${topCompany.feedback.toLocaleString()} responses, T3M ending Dec '24)
 
 **Price Performance**
-**[HX]** ${priceLeader.name} shows strongest price performance with +21.1% net positive vs competitors (${priceLeader.feedback.toLocaleString()} responses, T3M ending Aug '25)
+**[HX]** ${priceLeader.name} shows strongest price performance with +21.1% net positive vs competitors (${priceLeader.feedback.toLocaleString()} responses, T3M ending Dec '24)
 
 **Key Insights:**
-${companies.map(company => 
+${companies.map(company =>
   `• ${company.name}: ${company.nps} NPS, ${company.net_intent}% purchase intent`
 ).join('\n')}
 
-**[HX]** Source: HundredX verified customer feedback (Trailing 3 Months ending Aug '25)`;
+**[HX]** Source: HundredX verified customer feedback (Trailing 3 Months ending Dec '24)`;
 
   return {
     answer,
@@ -88,7 +92,7 @@ ${companies.map(company =>
         type: "hundredx",
         name: "HundredX Customer Experience Data",
         description: `Based on ${totalResponses.toLocaleString()} verified customer responses`,
-        time_period: "T3M ending Aug '25",
+        time_period: "T3M ending Dec '24",
         confidence: "high"
       },
       {
@@ -104,6 +108,8 @@ ${companies.map(company =>
       criteria: ["Price", "Quality", "Service"],
       brands: companies.map(c => c.name),
       enriched: true,
+      template_id: template_id,
+      web_search_enabled: enable_web_search,
       time_window: "Trailing 3 Months",
       total_rows_analyzed: companies.length * 3,
       processing_time_ms: Math.floor(Math.random() * 200) + 100
@@ -124,10 +130,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Main query processing endpoint
+// Main query processing endpoint - matches production API
 app.post('/api/answer', (req, res) => {
-  const { query, options = {} } = req.body;
-  
+  const { query, template_id = '3_tier_consumer_friendly_locked_v3', enable_web_search = false } = req.body;
+
+  console.log('📥 Received request:', { query, template_id, enable_web_search });
+
   if (!query || typeof query !== 'string' || query.trim().length === 0) {
     return res.status(400).json({
       answer: 'Invalid query provided.',
@@ -149,19 +157,23 @@ app.post('/api/answer', (req, res) => {
   }
 
   try {
-    // Simulate processing delay
+    // Simulate processing delay (shorter for mock)
     setTimeout(() => {
       if (isCommercialQuery(query)) {
         const industry = extractIndustry(query);
-        const response = generateMockResponse(query, industry);
+        const response = generateMockResponse(query, industry, template_id, enable_web_search);
+        console.log('✅ Sending mock response for commercial query');
         res.json(response);
       } else {
+        console.log('ℹ️ Non-commercial query detected');
         res.json({
           answer: "This query doesn't appear to be commercial in nature. HundredX enrichment is optimized for commercial queries about customer experience, quality, price, and service comparisons.",
           sources: [],
           metadata: {
             intent: "informational",
-            enriched: false
+            enriched: false,
+            template_id,
+            web_search_enabled: enable_web_search
           },
           success: true,
           error: null
@@ -170,6 +182,7 @@ app.post('/api/answer', (req, res) => {
     }, Math.floor(Math.random() * 300) + 100); // Random delay 100-400ms
 
   } catch (error) {
+    console.error('❌ Error processing query:', error);
     res.status(500).json({
       answer: 'An error occurred while processing your query. Please try again.',
       sources: [],

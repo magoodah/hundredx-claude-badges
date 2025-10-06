@@ -255,14 +255,14 @@
 }
 
 .hx-response-panel {
-  flex: 1;
-  min-width: 400px;
-  max-width: none;
+  flex: 0 0 420px; /* Fixed width - AI response gets remaining space */
+  min-width: 380px;
+  max-width: 480px;
   background: transparent;
   border-radius: 8px;
   border: 1px solid rgba(0, 138, 209, 0.1);
   position: relative;
-  
+
   /* Animation setup */
   opacity: 0;
   transform: translateX(30px) scale(0.95);
@@ -442,10 +442,10 @@
   }
 }
 
-/* Claude response styling within our container */
+/* AI response styling within our container - gets remaining space */
 .hx-response-container > div:first-child {
   flex: 1;
-  min-width: 400px;
+  min-width: 0; /* Allow it to shrink if needed, prevents truncation */
   max-width: none;
   padding-right: 8px;
 }
@@ -463,15 +463,15 @@
     margin-left: 0;
     padding: 0 20px;
   }
-  
+
   .hx-response-panel {
-    flex: 1;
+    flex: 0 0 380px; /* Slightly smaller on medium screens */
     min-width: 320px;
-    max-width: none;
+    max-width: 420px;
   }
-  
+
   .hx-response-container > div:first-child {
-    min-width: 350px;
+    min-width: 0; /* Allow AI response to use available space */
   }
 }
 
