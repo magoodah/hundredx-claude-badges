@@ -61,13 +61,6 @@
       return null;
     }
 
-    // Check if this looks like a commercial query
-    const isCommercial = /best|compare|vs|versus|top|which|better|good|recommend|price|quality|service|value|store|brand/i.test(query);
-    if (!isCommercial) {
-      debugLog('❌ Not a commercial query, skipping early processing');
-      return null;
-    }
-
     // Check if already in cache or being processed
     if (queryCache.has(query)) {
       debugLog('🔄 Query already being processed or cached');
@@ -690,15 +683,6 @@
     }
 
     debugLog('✅ Extracted query:', query);
-
-    // Check if this looks like a commercial query before creating the panel
-    const isCommercial = /best|compare|vs|versus|top|which|better|good|recommend|price|quality|service|value|store|brand/i.test(query);
-    debugLog('Is commercial query?', isCommercial);
-    
-    if (!isCommercial) {
-      debugLog('❌ Query does not appear commercial, skipping');
-      return;
-    }
 
     // Create unique context to prevent duplicate panels for same query+response
     const queryContext = createQueryContext(query, responseElement);
