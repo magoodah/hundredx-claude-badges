@@ -300,30 +300,87 @@
 .hx-response-content {
   padding: 16px;
   font-family: inherit;
-  line-height: 1.6;
+  line-height: 1.75;
   color: inherit;
 }
 
 .hx-response-content h3 {
-  margin: 16px 0 8px 0;
+  margin: 20px 0 12px 0;
   font-size: 16px;
   font-weight: 600;
   color: inherit;
 }
 
 .hx-response-content p {
-  margin: 12px 0;
+  margin: 16px 0;
   color: inherit;
 }
 
 .hx-response-content ul {
-  margin: 12px 0;
-  padding-left: 20px;
+  margin: 16px 0 !important;
+  padding-left: 32px !important;
+  list-style-type: disc !important;
+  list-style-position: outside !important;
 }
 
 .hx-response-content li {
-  margin: 4px 0;
+  margin: 8px 0 !important;
   color: inherit;
+  padding-left: 4px !important;
+  display: list-item !important;
+  list-style-type: disc !important;
+}
+
+/* Keep details/summary disclosure triangles */
+.hx-response-content details {
+  list-style-type: disclosure-closed;
+}
+
+.hx-response-content details[open] {
+  list-style-type: disclosure-open;
+}
+
+.hx-response-content summary {
+  display: list-item;
+  cursor: pointer;
+  list-style-type: disclosure-closed;
+}
+
+.hx-response-content details[open] > summary {
+  list-style-type: disclosure-open;
+}
+
+/* Ensure ul inside details also gets bullets */
+.hx-response-content details ul {
+  margin: 16px 0 !important;
+  padding-left: 32px !important;
+  list-style-type: disc !important;
+  list-style-position: outside !important;
+}
+
+.hx-response-content details ul li {
+  display: list-item !important;
+  list-style-type: disc !important;
+}
+
+.hx-response-content ol {
+  margin: 16px 0;
+  padding-left: 32px;
+}
+
+.hx-response-content ul ul,
+.hx-response-content ol ul,
+.hx-response-content ul ol,
+.hx-response-content ol ol {
+  margin: 8px 0;
+}
+
+.hx-response-content > *:first-child {
+  margin-top: 0;
+}
+
+.hx-response-content > *:last-child {
+  margin-bottom: 0;
 }
 
 .hx-response-content strong {
