@@ -255,9 +255,9 @@
 }
 
 .hx-response-panel {
-  flex: 0 0 420px; /* Fixed width - AI response gets remaining space */
-  min-width: 380px;
-  max-width: 480px;
+  flex: 1; /* Default: 50/50 split with AI response (Claude) */
+  min-width: 400px;
+  max-width: none;
   background: transparent;
   border-radius: 8px;
   border: 1px solid rgba(0, 138, 209, 0.1);
@@ -267,6 +267,13 @@
   opacity: 0;
   transform: translateX(30px) scale(0.95);
   transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Gemini-specific: fixed width to prevent AI response truncation */
+.hx-vendor-gemini .hx-response-panel {
+  flex: 0 0 420px;
+  min-width: 380px;
+  max-width: 480px;
 }
 
 .hx-response-panel.hx-animate-in {
@@ -445,9 +452,14 @@
 /* AI response styling within our container - gets remaining space */
 .hx-response-container > div:first-child {
   flex: 1;
-  min-width: 0; /* Allow it to shrink if needed, prevents truncation */
+  min-width: 400px; /* Default for Claude */
   max-width: none;
   padding-right: 8px;
+}
+
+/* Gemini-specific: allow AI response to shrink to prevent truncation */
+.hx-vendor-gemini > div:first-child {
+  min-width: 0;
 }
 
 /* Container overflow and spacing */
@@ -470,13 +482,25 @@
   }
 
   .hx-response-panel {
-    flex: 0 0 380px; /* Slightly smaller on medium screens */
+    flex: 1; /* Default for Claude */
+    min-width: 320px;
+    max-width: none;
+  }
+
+  /* Gemini-specific: smaller fixed width on medium screens */
+  .hx-vendor-gemini .hx-response-panel {
+    flex: 0 0 380px;
     min-width: 320px;
     max-width: 420px;
   }
 
   .hx-response-container > div:first-child {
-    min-width: 0; /* Allow AI response to use available space */
+    min-width: 350px; /* Default for Claude */
+  }
+
+  /* Gemini-specific: allow shrinking on medium screens */
+  .hx-vendor-gemini > div:first-child {
+    min-width: 0;
   }
 }
 
