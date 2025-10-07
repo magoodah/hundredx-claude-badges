@@ -1,6 +1,6 @@
 /**
  * HundredX AI Response Enhancement
- * - Detects AI assistant responses (Claude, Gemini, Perplexity) and injects HundredX-powered insights
+ * - Detects AI assistant responses (Claude, Gemini, Perplexity, Meta.ai) and injects HundredX-powered insights
  * - Creates side-by-side experience with matching styling
  * - Uses real HundredX API for commercial query enhancement
  * - Vendor-agnostic architecture using Adapter Pattern
@@ -131,6 +131,42 @@
       timing: {
         processingDelay: 100,
         debounceDelay: 1000,
+        minResponseLength: 200
+      }
+    },
+
+    meta: {
+      name: 'Meta',
+      hostnames: ['meta.ai'],
+
+      selectors: {
+        responses: {
+          primary: 'div.x78zum5.xdt5ytf.x1na6gtj.xsag5q8.x18yw6bp.xh8yej3',
+          fallbacks: [
+            'div[class*="x78zum5"][class*="xdt5ytf"]',
+            'div[class=""]',
+            'div > div > div'
+          ]
+        },
+        inputs: [
+          'div[role="textbox"][aria-label*="Ask"]',
+          'div[contenteditable="true"][role="textbox"]',
+          'div[contenteditable="true"]'
+        ],
+        buttons: [
+          'button[aria-label*="Send"]',
+          'button:has-text("Send")',
+          'button[type="submit"]'
+        ],
+        userQueries: [
+          'span.x1lliihq',
+          'span[class*="x1lliihq"]'
+        ]
+      },
+
+      timing: {
+        processingDelay: 150,  // React needs slightly more time
+        debounceDelay: 1500,   // More conservative for React reactivity
         minResponseLength: 200
       }
     }
@@ -536,6 +572,138 @@
     }
   }
 
+  /**
+   * Meta.ai-specific adapter
+   */
+  class MetaAdapter extends VendorAdapter {
+    extractQuery(responseElement) {
+      debugLog('Attempting to extract query from Meta.ai context');
+
+      // Method 1: Try to find query in heading/span elements using Meta's class patterns
+      const querySpans = document.querySelectorAll(this.config.selectors.userQueries.join(', '));
+      if (querySpans.length > 0) {
+        // Get the most recent query (usually first visible one)
+        for (let i = 0; i < querySpans.length; i++) {
+          const element = querySpans[i];
+          const text = element.textContent?.trim();
+          // Ensure it's a reasonable query length and not part of our panel
+          if (text && text.length > 3 && text.length < 500 && !element.closest('.hx-response-panel')) {
+            debugLog('Found Meta.ai query via span element:', text);
+            return text;
+          }
+        }
+      }
+
+      // Method 2: Look for page title
+      const pageTitle = document.title;
+      if (pageTitle && pageTitle !== 'Meta AI' && pageTitle.length > 3 && !pageTitle.includes('|')) {
+        debugLog('Found Meta.ai query via page title:', pageTitle);
+        return pageTitle;
+      }
+
+      // Method 3: Walk up from response to find conversation structure
+      debugLog('Trying method 3: walking up DOM tree');
+      let currentElement = responseElement;
+      let depth = 0;
+
+      while (currentElement && depth < 15) {
+        // Look for siblings that might contain user query text
+        const siblings = Array.from(currentElement.parentNode?.children || []);
+        for (const sibling of siblings) {
+          // Look for elements with potential query text (not the response itself)
+          if (sibling !== responseElement && sibling !== currentElement) {
+            const text = sibling.textContent?.trim();
+            if (text && text.length > 10 && text.length < 500 &&
+                !text.includes('Wegovy and Zepbound are') && // avoid response text
+                !sibling.closest('.hx-response-panel')) {
+              debugLog('Found Meta.ai query via sibling:', text);
+              return text;
+            }
+          }
+        }
+
+        currentElement = currentElement.parentNode;
+        depth++;
+      }
+
+      debugLog('❌ Could not extract query from Meta.ai context');
+      return null;
+    }
+
+    validateResponse(element) {
+      // Call parent validation first
+      if (!super.validateResponse(element)) {
+        return false;
+      }
+
+      // Meta-specific: skip elements that are too small (likely fragments)
+      const text = element.textContent?.trim();
+      if (!text || text.length < 100) {
+        debugLog('Skipping Meta.ai element - too short');
+        return false;
+      }
+
+      // Skip button containers
+      if (element.querySelector('button[aria-label*="Send"]')) {
+        debugLog('Skipping Meta.ai input/button container');
+        return false;
+      }
+
+      // Skip navigation/sidebar elements
+      if (element.closest('[role="navigation"]') || element.closest('nav')) {
+        debugLog('Skipping Meta.ai navigation element');
+        return false;
+      }
+
+      return true;
+    }
+
+    findResponseContainers() {
+      debugLog(`Looking for ${this.name} responses using custom logic...`);
+      const responses = new Set();
+
+      // Meta.ai uses Facebook's obfuscated classes which change often
+      // Use a heuristic approach: find divs with substantial text content
+
+      // Try primary selector first
+      const primaryElements = document.querySelectorAll(this.config.selectors.responses.primary);
+      debugLog(`Found ${primaryElements.length} elements with primary selector`);
+
+      primaryElements.forEach(element => {
+        if (!processedResponses.has(element) && this.validateResponse(element)) {
+          const text = element.textContent?.trim();
+          if (text && text.length > this.config.timing.minResponseLength) {
+            responses.add(element);
+            debugLog('✅ Added element from primary selector');
+          }
+        }
+      });
+
+      // If primary didn't work, use heuristic: find divs with lots of text
+      if (responses.size === 0) {
+        debugLog('Primary selector failed, using heuristic approach...');
+
+        const allDivs = document.querySelectorAll('div');
+        allDivs.forEach(div => {
+          const text = div.textContent?.trim();
+
+          // Look for divs with substantial content
+          if (text && text.length > 500 && text.length < 5000) {
+            // Ensure it's not a container for the whole page
+            const childDivCount = div.querySelectorAll('div').length;
+            if (childDivCount < 20 && !processedResponses.has(div) && this.validateResponse(div)) {
+              responses.add(div);
+              debugLog('✅ Added element via heuristic');
+            }
+          }
+        });
+      }
+
+      debugLog(`Total ${this.name} responses found: ${responses.size}`);
+      return Array.from(responses);
+    }
+  }
+
   // ============================================================================
   // VENDOR DETECTION & FACTORY
   // ============================================================================
@@ -577,6 +745,8 @@
         return new GeminiAdapter(config);
       case 'perplexity':
         return new PerplexityAdapter(config);
+      case 'meta':
+        return new MetaAdapter(config);
       default:
         debugLog('⚠️ Unknown vendor key:', vendorKey);
         return null;
