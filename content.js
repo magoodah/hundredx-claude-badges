@@ -642,6 +642,19 @@
         return false;
       }
 
+      // Skip user query displays - they match userQuery selectors
+      const userQuerySelectors = this.config.selectors.userQueries.join(', ');
+      if (element.matches(userQuerySelectors) || element.querySelector(userQuerySelectors)) {
+        // Check if the matching element is the bulk of the content
+        const queryEl = element.matches(userQuerySelectors) ? element : element.querySelector(userQuerySelectors);
+        const queryTextLength = queryEl?.textContent?.trim().length || 0;
+        // If the query element contains most of the text, this is likely a query display
+        if (queryTextLength > text.length * 0.7) {
+          debugLog('Skipping Meta.ai user query display element');
+          return false;
+        }
+      }
+
       // Skip containers that include the input area
       // Only skip if the element itself is small (likely the input bar)
       if (element.querySelector('button[aria-label*="Send"]')) {
@@ -714,10 +727,30 @@
         return b.textLength - a.textLength;
       });
 
-      // Take top candidates (limit to 3 to avoid over-matching)
-      candidates.slice(0, 3).forEach(({ div }) => {
+      // Deduplicate: remove nested elements
+      // Keep higher-scoring parents, exclude children that are inside them
+      const deduplicated = [];
+      for (const candidate of candidates) {
+        const isNested = deduplicated.some(existing =>
+          existing.div.contains(candidate.div) || candidate.div.contains(existing.div)
+        );
+
+        if (!isNested) {
+          deduplicated.push(candidate);
+        } else {
+          debugLog('⏭️ Skipping nested candidate');
+        }
+
+        // For Meta.ai, limit to 1 response since it shows one at a time
+        // Other vendors might show multiple responses in a conversation view
+        const maxResponses = 1;
+        if (deduplicated.length >= maxResponses) break;
+      }
+
+      // Add deduplicated responses
+      deduplicated.forEach(({ div, score, textLength }) => {
         responses.add(div);
-        debugLog('✅ Added element via heuristic (score-based)');
+        debugLog(`✅ Added element via heuristic (score: ${score}, text length: ${textLength})`);
       });
 
       debugLog(`Total ${this.name} responses found: ${responses.size}`);
@@ -1385,10 +1418,17 @@
     }
 
     if (processedResponses.has(responseElement)) {
-      debugLog('❌ Response already processed, skipping');
+      debugLog('❌ Response already processed, skipping', {
+        elementTag: responseElement.tagName,
+        textPreview: responseElement.textContent?.trim().substring(0, 100)
+      });
       return;
     }
     processedResponses.add(responseElement);
+    debugLog('✅ Response marked as processed', {
+      elementTag: responseElement.tagName,
+      textPreview: responseElement.textContent?.trim().substring(0, 100)
+    });
 
     // Check if this is a substantial response worth augmenting
     if (!isSubstantialResponse(responseElement)) {
