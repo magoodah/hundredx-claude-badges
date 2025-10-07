@@ -143,9 +143,8 @@
         responses: {
           primary: 'div.x78zum5.xdt5ytf.x1na6gtj.xsag5q8.x18yw6bp.xh8yej3',
           fallbacks: [
-            'div[class*="x78zum5"][class*="xdt5ytf"]',
-            'div[class=""]',
-            'div > div > div'
+            // Meta.ai uses obfuscated classes - rely on heuristic instead
+            // Removed overly generic selectors that match UI elements
           ]
         },
         inputs: [
@@ -166,7 +165,7 @@
       timing: {
         processingDelay: 150,  // React needs slightly more time
         debounceDelay: 1500,   // More conservative for React reactivity
-        minResponseLength: 200
+        minResponseLength: 500  // Higher threshold to avoid UI elements
       }
     }
   };
@@ -578,6 +577,16 @@
     extractQuery(responseElement) {
       debugLog('Attempting to extract query from Meta.ai context');
 
+      // Common UI text patterns to reject
+      const uiTextPatterns = [
+        /^new chat$/i,
+        /^settings$/i,
+        /^help$/i,
+        /^log\s*in$/i,
+        /^sign\s*up$/i,
+        /^menu$/i
+      ];
+
       // Method 1: Try to find query in heading/span elements using Meta's class patterns
       const querySpans = document.querySelectorAll(this.config.selectors.userQueries.join(', '));
       if (querySpans.length > 0) {
@@ -585,8 +594,14 @@
         for (let i = 0; i < querySpans.length; i++) {
           const element = querySpans[i];
           const text = element.textContent?.trim();
+
+          // Skip UI text
+          if (text && uiTextPatterns.some(pattern => pattern.test(text))) {
+            continue;
+          }
+
           // Ensure it's a reasonable query length and not part of our panel
-          if (text && text.length > 3 && text.length < 500 && !element.closest('.hx-response-panel')) {
+          if (text && text.length > 10 && text.length < 500 && !element.closest('.hx-response-panel')) {
             debugLog('Found Meta.ai query via span element:', text);
             return text;
           }
@@ -637,8 +652,15 @@
 
       // Meta-specific: skip elements that are too small (likely fragments)
       const text = element.textContent?.trim();
-      if (!text || text.length < 100) {
-        debugLog('Skipping Meta.ai element - too short');
+      if (!text || text.length < 500) {
+        debugLog('Skipping Meta.ai element - too short (< 500 chars)');
+        return false;
+      }
+
+      // Must have sentence-like structure (multiple sentences with periods)
+      const sentenceCount = (text.match(/\.\s+[A-Z]/g) || []).length;
+      if (sentenceCount < 2) {
+        debugLog('Skipping Meta.ai element - not enough sentence structure');
         return false;
       }
 
@@ -679,6 +701,14 @@
     findResponseContainers() {
       debugLog(`Looking for ${this.name} responses...`);
       const responses = new Set();
+
+      // Skip if we're on landing page with no conversation yet
+      // Check for presence of actual conversation indicators
+      const hasConversation = document.body.textContent.length > 5000; // Landing page is shorter
+      if (!hasConversation) {
+        debugLog('Skipping - appears to be landing page (no substantial content)');
+        return [];
+      }
 
       // Try base class logic first (primary + fallbacks)
       const baseResponses = super.findResponseContainers();
