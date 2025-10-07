@@ -642,10 +642,16 @@
         return false;
       }
 
-      // Skip button containers
+      // Skip containers that include the input area
+      // Only skip if the element itself is small (likely the input bar)
       if (element.querySelector('button[aria-label*="Send"]')) {
-        debugLog('Skipping Meta.ai input/button container');
-        return false;
+        // If the element is short, it's probably the input bar itself
+        if (text.length < 1000) {
+          debugLog('Skipping Meta.ai input/button container');
+          return false;
+        }
+        // If it's long, it might be a valid response that happens to have
+        // the input bar as a sibling in a common parent - allow it
       }
 
       // Skip navigation/sidebar elements
@@ -658,45 +664,61 @@
     }
 
     findResponseContainers() {
-      debugLog(`Looking for ${this.name} responses using custom logic...`);
+      debugLog(`Looking for ${this.name} responses...`);
       const responses = new Set();
 
-      // Meta.ai uses Facebook's obfuscated classes which change often
-      // Use a heuristic approach: find divs with substantial text content
+      // Try base class logic first (primary + fallbacks)
+      const baseResponses = super.findResponseContainers();
+      baseResponses.forEach(r => responses.add(r));
 
-      // Try primary selector first
-      const primaryElements = document.querySelectorAll(this.config.selectors.responses.primary);
-      debugLog(`Found ${primaryElements.length} elements with primary selector`);
+      if (responses.size > 0) {
+        debugLog(`✅ Found ${responses.size} responses using standard selectors`);
+        return Array.from(responses);
+      }
 
-      primaryElements.forEach(element => {
-        if (!processedResponses.has(element) && this.validateResponse(element)) {
-          const text = element.textContent?.trim();
-          if (text && text.length > this.config.timing.minResponseLength) {
-            responses.add(element);
-            debugLog('✅ Added element from primary selector');
-          }
+      // If standard selectors failed, use heuristic approach
+      // Meta.ai uses Facebook's obfuscated classes which change frequently
+      debugLog('Standard selectors failed, using heuristic approach...');
+
+      const allDivs = document.querySelectorAll('div');
+      const candidates = [];
+
+      allDivs.forEach(div => {
+        const text = div.textContent?.trim();
+        if (!text || text.length < this.config.timing.minResponseLength) return;
+
+        // Calculate a "response score" based on characteristics
+        let score = 0;
+        const childDivCount = div.querySelectorAll('div').length;
+        const directChildren = div.children.length;
+
+        // Good indicators of a response container:
+        if (text.length > 300 && text.length < 10000) score += 2;
+        if (childDivCount > 2 && childDivCount < 50) score += 1;
+        if (directChildren > 1 && directChildren < 15) score += 1;
+
+        // Has paragraph-like content
+        if (text.includes('\n\n') || text.includes('. ')) score += 1;
+
+        // Not the whole page
+        if (childDivCount < 100) score += 1;
+
+        if (score >= 3 && !processedResponses.has(div) && this.validateResponse(div)) {
+          candidates.push({ div, score, textLength: text.length });
         }
       });
 
-      // If primary didn't work, use heuristic: find divs with lots of text
-      if (responses.size === 0) {
-        debugLog('Primary selector failed, using heuristic approach...');
+      // Sort by score (descending), then by text length (descending)
+      candidates.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.textLength - a.textLength;
+      });
 
-        const allDivs = document.querySelectorAll('div');
-        allDivs.forEach(div => {
-          const text = div.textContent?.trim();
-
-          // Look for divs with substantial content
-          if (text && text.length > 500 && text.length < 5000) {
-            // Ensure it's not a container for the whole page
-            const childDivCount = div.querySelectorAll('div').length;
-            if (childDivCount < 20 && !processedResponses.has(div) && this.validateResponse(div)) {
-              responses.add(div);
-              debugLog('✅ Added element via heuristic');
-            }
-          }
-        });
-      }
+      // Take top candidates (limit to 3 to avoid over-matching)
+      candidates.slice(0, 3).forEach(({ div }) => {
+        responses.add(div);
+        debugLog('✅ Added element via heuristic (score-based)');
+      });
 
       debugLog(`Total ${this.name} responses found: ${responses.size}`);
       return Array.from(responses);
