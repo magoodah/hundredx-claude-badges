@@ -96,6 +96,43 @@
         debounceDelay: 1500,   // More conservative for Angular reactivity
         minResponseLength: 200
       }
+    },
+
+    perplexity: {
+      name: 'Perplexity',
+      hostnames: ['perplexity.ai'],
+
+      selectors: {
+        responses: {
+          primary: 'div.max-w-threadContentWidth',
+          fallbacks: [
+            'p.my-2',
+            'ul.marker\\:text-quiet',
+            'div.prose',
+            '.markdown'
+          ]
+        },
+        inputs: [
+          '#ask-input',
+          'div[contenteditable="true"][role="textbox"]',
+          'div[contenteditable="true"][id*="input"]',
+          'div[contenteditable="true"]'
+        ],
+        buttons: [
+          '[data-testid="submit-button"]',
+          'button[aria-label="Submit"]',
+          'button[type="submit"]'
+        ],
+        userQueries: [
+          '[data-testid^="thread-title-"]'
+        ]
+      },
+
+      timing: {
+        processingDelay: 100,
+        debounceDelay: 1000,
+        minResponseLength: 200
+      }
     }
   };
 
@@ -429,6 +466,76 @@
     }
   }
 
+  /**
+   * Perplexity-specific adapter
+   */
+  class PerplexityAdapter extends VendorAdapter {
+    extractQuery(responseElement) {
+      debugLog('Attempting to extract query from Perplexity context');
+
+      // Method 1: Try to find thread title elements (from sidebar or page)
+      const threadTitleElements = document.querySelectorAll('[data-testid^="thread-title-"]');
+      if (threadTitleElements.length > 0) {
+        // Get the most recent/active one (usually the first or last depending on UI)
+        for (let i = 0; i < threadTitleElements.length; i++) {
+          const element = threadTitleElements[i];
+          const text = element.textContent?.trim();
+          if (text && text.length > 3 && !element.closest('.hx-response-panel')) {
+            debugLog('Found Perplexity query via thread-title:', text);
+            return text;
+          }
+        }
+      }
+
+      // Method 2: Look for any query display elements using generic selectors
+      const userQuerySelectors = this.config.selectors.userQueries.join(', ');
+      const userQueryElements = document.querySelectorAll(userQuerySelectors);
+
+      if (userQueryElements.length > 0) {
+        for (let i = userQueryElements.length - 1; i >= 0; i--) {
+          const element = userQueryElements[i];
+          const text = element.textContent?.trim();
+          if (text && text.length > 3 && !element.closest('.hx-response-panel')) {
+            debugLog('Found Perplexity query via user query element:', text);
+            return text;
+          }
+        }
+      }
+
+      // Method 3: Try to extract from page title or URL
+      const pageTitle = document.title;
+      if (pageTitle && pageTitle !== 'Perplexity' && pageTitle.length > 3) {
+        debugLog('Found Perplexity query via page title:', pageTitle);
+        return pageTitle;
+      }
+
+      debugLog('❌ Could not extract query from Perplexity context');
+      return null;
+    }
+
+    validateResponse(element) {
+      // Call parent validation first
+      if (!super.validateResponse(element)) {
+        return false;
+      }
+
+      // Perplexity-specific: skip elements that are too small (likely fragments)
+      const text = element.textContent?.trim();
+      if (!text || text.length < 50) {
+        debugLog('Skipping Perplexity element - too short');
+        return false;
+      }
+
+      // Skip citation elements
+      if (element.classList.contains('citation') || element.closest('.citation')) {
+        debugLog('Skipping Perplexity citation element');
+        return false;
+      }
+
+      return true;
+    }
+  }
+
   // ============================================================================
   // VENDOR DETECTION & FACTORY
   // ============================================================================
@@ -468,6 +575,8 @@
         return new ClaudeAdapter(config);
       case 'gemini':
         return new GeminiAdapter(config);
+      case 'perplexity':
+        return new PerplexityAdapter(config);
       default:
         debugLog('⚠️ Unknown vendor key:', vendorKey);
         return null;
