@@ -454,6 +454,7 @@
 .hx-response-container {
   overflow-x: auto;
   margin-bottom: 24px;
+  margin-left: 0;
 }
 
 /* Responsive breakpoints */
