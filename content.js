@@ -1,13 +1,487 @@
 /**
- * HundredX AI Response Enhancement - DEBUG VERSION
- * - Detects Claude responses and injects HundredX-powered responses alongside
+ * HundredX AI Response Enhancement
+ * - Detects AI assistant responses (Claude, Gemini, Perplexity) and injects HundredX-powered insights
  * - Creates side-by-side experience with matching styling
  * - Uses real HundredX API for commercial query enhancement
+ * - Vendor-agnostic architecture using Adapter Pattern
  */
 (() => {
-  const API_BASE_URL = 'https://pulse.ngrok.pizza';
+  //const API_BASE_URL = 'http://localhost:3000'; // Mock API server
+  const API_BASE_URL = 'https://pulse.ngrok.pizza'; // Production API (commented out for testing)
   const LOGO_URL = chrome.runtime.getURL("HundredX+Logo+-+Blue+Registered-640w.webp");
-  
+
+  // ============================================================================
+  // VENDOR CONFIGURATIONS
+  // ============================================================================
+
+  const VENDOR_CONFIGS = {
+    claude: {
+      name: 'Claude',
+      hostnames: ['claude.ai'],
+
+      selectors: {
+        responses: {
+          primary: "div[class='grid-cols-1 grid gap-2.5 [&_>_*]:min-w-0 standard-markdown']",
+          fallbacks: [
+            '[data-cy="message-text"]',
+            'article',
+            '.prose',
+            '.markdown',
+            '[data-testid*="message"]'
+          ]
+        },
+        inputs: [
+          'textarea[placeholder*="Message"]',
+          'textarea[placeholder*="message"]',
+          'textarea[data-testid*="input"]',
+          'textarea[contenteditable="true"]',
+          '.ProseMirror',
+          '[data-testid="chat-input"]',
+          'textarea',
+          'div[contenteditable="true"]'
+        ],
+        buttons: [
+          'button[type="submit"]',
+          'button[data-testid*="send"]',
+          'button[aria-label*="Send"]',
+          'button[aria-label*="send"]',
+          '[data-testid="send-button"]'
+        ],
+        userQueries: [
+          '.whitespace-pre-wrap.break-words'
+        ]
+      },
+
+      timing: {
+        processingDelay: 100,
+        debounceDelay: 1000,
+        minResponseLength: 200
+      }
+    },
+
+    gemini: {
+      name: 'Gemini',
+      hostnames: ['gemini.google.com'],
+
+      selectors: {
+        responses: {
+          primary: 'model-response',
+          fallbacks: [
+            'message-content.model-response-text',
+            '.conversation-container .response-container',
+            '.markdown.markdown-main-panel'
+          ]
+        },
+        inputs: [
+          'div[contenteditable="true"][role="textbox"]',
+          'textarea[placeholder*="prompt"]',
+          'textarea[placeholder*="Enter"]',
+          '.ql-editor[contenteditable="true"]',
+          'div[contenteditable="true"]'
+        ],
+        buttons: [
+          'button[aria-label="Send message"]',
+          'button[aria-label*="Send"]',
+          'button[type="submit"]'
+        ],
+        userQueries: [
+          'user-query',
+          '.user-query-bubble-with-background',
+          'user-query-content'
+        ]
+      },
+
+      timing: {
+        processingDelay: 150,  // Angular needs slightly more time
+        debounceDelay: 1500,   // More conservative for Angular reactivity
+        minResponseLength: 200
+      }
+    }
+  };
+
+  // ============================================================================
+  // VENDOR ADAPTER CLASSES
+  // ============================================================================
+
+  /**
+   * Base class for vendor-specific adapters
+   * Provides common functionality and defines interface for vendor-specific implementations
+   */
+  class VendorAdapter {
+    constructor(config) {
+      this.config = config;
+      this.name = config.name;
+    }
+
+    /**
+     * Find all response containers on the page
+     * Uses primary selector first, then falls back to alternatives
+     */
+    findResponseContainers() {
+      debugLog(`Looking for ${this.name} responses...`);
+      const responses = new Set();
+
+      // Try primary selector
+      const primaryElements = document.querySelectorAll(this.config.selectors.responses.primary);
+      debugLog(`Found ${primaryElements.length} elements with primary selector`);
+
+      primaryElements.forEach(element => {
+        if (!processedResponses.has(element) && this.validateResponse(element)) {
+          const text = element.textContent?.trim();
+          if (text && text.length > this.config.timing.minResponseLength) {
+            responses.add(element);
+            debugLog('✅ Added element from primary selector');
+          }
+        }
+      });
+
+      // Try fallback selectors if needed
+      if (responses.size === 0) {
+        debugLog('No primary elements found, trying fallback selectors...');
+        this.config.selectors.responses.fallbacks.forEach(selector => {
+          const elements = document.querySelectorAll(selector);
+          debugLog(`Found ${elements.length} elements with selector: ${selector}`);
+
+          elements.forEach(element => {
+            if (!processedResponses.has(element) && this.validateResponse(element)) {
+              const text = element.textContent?.trim();
+              if (text && text.length > this.config.timing.minResponseLength) {
+                responses.add(element);
+                debugLog(`✅ Added element from fallback selector: ${selector}`);
+              }
+            }
+          });
+        });
+      }
+
+      debugLog(`Total ${this.name} responses found: ${responses.size}`);
+      return Array.from(responses);
+    }
+
+    /**
+     * Find the chat input field
+     */
+    findInputField() {
+      debugLog(`🔍 Searching for ${this.name} input field...`);
+      for (const selector of this.config.selectors.inputs) {
+        const element = document.querySelector(selector);
+        if (element) {
+          debugLog(`✅ Found ${this.name} input field with selector:`, selector);
+          debugLog('📝 Input field details:', {
+            tagName: element.tagName,
+            placeholder: element.placeholder,
+            className: element.className,
+            id: element.id
+          });
+          return element;
+        }
+      }
+      debugLog(`❌ No ${this.name} input field found`);
+      return null;
+    }
+
+    /**
+     * Find submit buttons
+     */
+    findSubmitButtons() {
+      const buttons = [];
+      for (const selector of this.config.selectors.buttons) {
+        const elements = document.querySelectorAll(selector);
+        buttons.push(...elements);
+      }
+      return buttons;
+    }
+
+    /**
+     * Validate if a response element should be processed
+     * Can be overridden by vendor-specific adapters
+     */
+    validateResponse(element) {
+      // Don't process if element is inside or contains our panel
+      if (element.closest('.hx-response-panel')) {
+        return false;
+      }
+      if (element.querySelector('.hx-response-panel')) {
+        return false;
+      }
+
+      // Don't process if element is inside our container (prevents reprocessing after injection)
+      if (element.closest('.hx-response-container')) {
+        return false;
+      }
+
+      return true;
+    }
+
+    /**
+     * Extract user query from context - MUST be implemented by subclasses
+     */
+    extractQuery(responseElement) {
+      throw new Error(`${this.name}Adapter must implement extractQuery()`);
+    }
+
+    /**
+     * Inject HundredX panel into DOM - can be overridden for vendor-specific needs
+     */
+    injectPanel(responseElement, panel) {
+      // Default implementation: wrap response and panel in container
+      const container = document.createElement('div');
+      container.className = 'hx-response-container';
+      // Add vendor-specific class for targeted styling
+      container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
+
+      const parent = responseElement.parentNode;
+      debugLog(`Injecting panel for ${this.name}, parent:`, parent);
+      parent.insertBefore(container, responseElement);
+      container.appendChild(responseElement);
+      container.appendChild(panel);
+
+      return container;
+    }
+
+    /**
+     * Get timing configuration
+     */
+    getTimingConfig() {
+      return this.config.timing;
+    }
+  }
+
+  /**
+   * Claude-specific adapter
+   */
+  class ClaudeAdapter extends VendorAdapter {
+    extractQuery(responseElement) {
+      debugLog('Attempting to extract query from Claude context');
+
+      // Method 1: Look for user query elements
+      const userQueryElements = document.querySelectorAll(this.config.selectors.userQueries.join(', '));
+      debugLog('Found user query elements:', userQueryElements.length);
+
+      if (userQueryElements.length > 0) {
+        // Get the most recent user query (last one that's not our response)
+        for (let i = userQueryElements.length - 1; i >= 0; i--) {
+          const element = userQueryElements[i];
+          const text = element.textContent?.trim();
+
+          // Make sure this isn't inside our own panel
+          if (!element.closest('.hx-response-panel') && text && text.length > 3) {
+            debugLog('Found query via method 1:', text);
+            return text;
+          }
+        }
+      }
+
+      // Method 2: Walk up from the response to find conversation structure
+      debugLog('Trying method 2: walking up DOM tree');
+      let currentElement = responseElement;
+      let depth = 0;
+
+      while (currentElement && depth < 10) {
+        // Look for siblings that might contain user messages
+        const siblings = Array.from(currentElement.parentNode?.children || []);
+        for (let i = 0; i < siblings.length; i++) {
+          const sibling = siblings[i];
+          const userQuery = sibling.querySelector(this.config.selectors.userQueries.join(', '));
+          if (userQuery && userQuery !== responseElement) {
+            const text = userQuery.textContent?.trim();
+            if (text && text.length > 3) {
+              debugLog('Found query via method 2:', text);
+              return text;
+            }
+          }
+        }
+
+        currentElement = currentElement.parentNode;
+        depth++;
+      }
+
+      // Method 3: Just grab the most recent user input from anywhere on the page
+      debugLog('Trying method 3: most recent user input');
+      const allUserInputs = Array.from(document.querySelectorAll(this.config.selectors.userQueries.join(', ')));
+
+      if (allUserInputs.length > 0) {
+        const lastInput = allUserInputs[allUserInputs.length - 1];
+        const text = lastInput.textContent?.trim();
+        if (text && text.length > 3) {
+          debugLog('Found query via method 3:', text);
+          return text;
+        }
+      }
+
+      debugLog('❌ Could not extract query from Claude context');
+      return null;
+    }
+  }
+
+  /**
+   * Gemini-specific adapter
+   */
+  class GeminiAdapter extends VendorAdapter {
+    validateResponse(element) {
+      // Call parent validation first (includes container checks)
+      if (!super.validateResponse(element)) {
+        return false;
+      }
+
+      // Gemini-specific: avoid inline sources carousel
+      if (element.closest('sources-carousel-inline')) {
+        debugLog('Skipping Gemini inline sources');
+        return false;
+      }
+
+      // Verify Gemini custom elements are fully rendered
+      if (element.tagName === 'MODEL-RESPONSE') {
+        const messageContent = element.querySelector('message-content.model-response-text');
+        if (!messageContent) {
+          debugLog('Gemini model-response not fully rendered yet');
+          return false;
+        }
+
+        const markdown = messageContent.querySelector('.markdown');
+        if (!markdown) {
+          debugLog('Gemini markdown container not ready yet');
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    extractQuery(responseElement) {
+      debugLog('Attempting to extract query from Gemini context');
+
+      // Gemini has a clear conversation-container structure
+      // Each conversation turn has both user-query and model-response as siblings
+
+      // Method 1: Find the conversation container and get the user-query
+      const conversationContainer = responseElement.closest('.conversation-container');
+      if (conversationContainer) {
+        const userQuery = conversationContainer.querySelector('user-query');
+        if (userQuery) {
+          const text = userQuery.textContent?.trim();
+          if (text && text.length > 3) {
+            debugLog('Found Gemini query via conversation-container:', text);
+            return text;
+          }
+        }
+      }
+
+      // Method 2: Try to find any user-query element
+      const userQuerySelectors = this.config.selectors.userQueries.join(', ');
+      const userQueryElements = document.querySelectorAll(userQuerySelectors);
+
+      if (userQueryElements.length > 0) {
+        // Get the most recent one
+        for (let i = userQueryElements.length - 1; i >= 0; i--) {
+          const element = userQueryElements[i];
+          const text = element.textContent?.trim();
+          if (text && text.length > 3) {
+            debugLog('Found Gemini query via user-query element:', text);
+            return text;
+          }
+        }
+      }
+
+      debugLog('❌ Could not extract query from Gemini context');
+      return null;
+    }
+
+    injectPanel(responseElement, panel) {
+      // For Gemini, we need to be careful with Angular's custom elements
+      // Find the actual model-response element (responseElement might be a child)
+
+      const conversationContainer = responseElement.closest('.conversation-container');
+      if (!conversationContainer) {
+        debugLog('⚠️ No conversation-container found, using fallback');
+        return super.injectPanel(responseElement, panel);
+      }
+
+      // Find the model-response element - it might be the responseElement itself or its parent
+      let modelResponse = responseElement.closest('model-response') || responseElement;
+
+      // If responseElement is not a model-response or inside one, search for it
+      if (modelResponse.tagName !== 'MODEL-RESPONSE') {
+        modelResponse = conversationContainer.querySelector('model-response');
+        if (!modelResponse) {
+          debugLog('⚠️ No model-response found, using fallback');
+          return super.injectPanel(responseElement, panel);
+        }
+      }
+
+      debugLog('Injecting panel into Gemini conversation-container');
+
+      // Create wrapper for side-by-side layout
+      const container = document.createElement('div');
+      container.className = 'hx-response-container';
+      // Add vendor-specific class for targeted styling
+      container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
+
+      // Insert container after model-response
+      modelResponse.after(container);
+
+      // Move model-response into container (safe because it's still in same parent context)
+      container.appendChild(modelResponse);
+      container.appendChild(panel);
+
+      debugLog('✅ Gemini panel injected successfully');
+      return container;
+    }
+  }
+
+  // ============================================================================
+  // VENDOR DETECTION & FACTORY
+  // ============================================================================
+
+  /**
+   * Detect current vendor based on hostname
+   */
+  function detectCurrentVendor() {
+    const hostname = window.location.hostname;
+    debugLog('Detecting vendor for hostname:', hostname);
+
+    for (const [key, config] of Object.entries(VENDOR_CONFIGS)) {
+      if (config.hostnames.some(h => hostname.includes(h))) {
+        debugLog(`✅ Detected vendor: ${config.name}`);
+        return key;
+      }
+    }
+
+    debugLog('❌ Unknown vendor:', hostname);
+    return null;
+  }
+
+  /**
+   * Create the appropriate vendor adapter
+   */
+  function createVendorAdapter() {
+    const vendorKey = detectCurrentVendor();
+    if (!vendorKey) {
+      debugLog('❌ No vendor adapter available for this site');
+      return null;
+    }
+
+    const config = VENDOR_CONFIGS[vendorKey];
+
+    switch (vendorKey) {
+      case 'claude':
+        return new ClaudeAdapter(config);
+      case 'gemini':
+        return new GeminiAdapter(config);
+      default:
+        debugLog('⚠️ Unknown vendor key:', vendorKey);
+        return null;
+    }
+  }
+
+  // Initialize vendor adapter
+  const vendorAdapter = createVendorAdapter();
+  if (!vendorAdapter) {
+    console.warn('HundredX: Not running on a supported AI assistant site');
+    return; // Exit early if not on supported site
+  }
+  debugLog(`🚀 Initialized ${vendorAdapter.name} adapter`);
+
   // Track processed responses to avoid duplicates
   const processedResponses = new WeakSet();
   
@@ -370,71 +844,13 @@
     }, 300);
   }
 
-  // Extract query from Claude's conversation context - UPDATED
+  // Extract query using vendor adapter
   function extractQueryFromContext(responseElement) {
-    debugLog('Attempting to extract query from context');
-    
-    // Method 1: Look for the user query with the selector you provided
-    const userQueryElements = document.querySelectorAll('.whitespace-pre-wrap.break-words');
-    debugLog('Found .whitespace-pre-wrap.break-words elements:', userQueryElements.length);
-    
-    if (userQueryElements.length > 0) {
-      // Get the most recent user query (last one that's not our response)
-      for (let i = userQueryElements.length - 1; i >= 0; i--) {
-        const element = userQueryElements[i];
-        const text = element.textContent?.trim();
-        debugLog(`Checking element ${i}:`, text);
-        
-        // Make sure this isn't inside our own panel
-        if (!element.closest('.hx-response-panel') && text && text.length > 3) {
-          debugLog('Found query via method 1:', text);
-          return text;
-        }
-      }
+    if (!vendorAdapter) {
+      debugLog('❌ No vendor adapter available');
+      return null;
     }
-
-    // Method 2: Walk up from the response to find conversation structure
-    debugLog('Trying method 2: walking up DOM tree');
-    let currentElement = responseElement;
-    let depth = 0;
-    
-    while (currentElement && depth < 10) {
-      debugLog(`Depth ${depth}, element:`, currentElement.tagName, currentElement.className);
-      
-      // Look for siblings that might contain user messages
-      const siblings = Array.from(currentElement.parentNode?.children || []);
-      for (let i = 0; i < siblings.length; i++) {
-        const sibling = siblings[i];
-        const userQuery = sibling.querySelector('.whitespace-pre-wrap.break-words');
-        if (userQuery && userQuery !== responseElement) {
-          const text = userQuery.textContent?.trim();
-          if (text && text.length > 3) {
-            debugLog('Found query via method 2:', text);
-            return text;
-          }
-        }
-      }
-      
-      currentElement = currentElement.parentNode;
-      depth++;
-    }
-
-    // Method 3: Just grab the most recent user input from anywhere on the page
-    debugLog('Trying method 3: most recent user input');
-    const allUserInputs = Array.from(document.querySelectorAll('.whitespace-pre-wrap.break-words'));
-    debugLog('All user inputs found:', allUserInputs.map(el => el.textContent?.trim()));
-    
-    if (allUserInputs.length > 0) {
-      const lastInput = allUserInputs[allUserInputs.length - 1];
-      const text = lastInput.textContent?.trim();
-      if (text && text.length > 3) {
-        debugLog('Found query via method 3:', text);
-        return text;
-      }
-    }
-
-    debugLog('❌ Could not extract query from context');
-    return null;
+    return vendorAdapter.extractQuery(responseElement);
   }
 
   // Create simple loading content
@@ -652,9 +1068,14 @@
     return isSubstantial;
   }
 
-  // Process a Claude response and add HundredX panel
-  async function processClaudeResponse(responseElement) {
-    debugLog('Processing Claude response:', responseElement);
+  // Process an AI response and add HundredX panel (vendor-agnostic)
+  async function processResponse(responseElement) {
+    if (!vendorAdapter) {
+      debugLog('❌ No vendor adapter available');
+      return;
+    }
+
+    debugLog(`Processing ${vendorAdapter.name} response:`, responseElement);
 
     // Check if extension is enabled
     const settings = await api.getSettings();
@@ -675,7 +1096,7 @@
       return;
     }
 
-    // Extract the user query
+    // Extract the user query using vendor adapter
     const query = extractQueryFromContext(responseElement);
     if (!query) {
       debugLog('❌ Could not extract query from context');
@@ -693,22 +1114,14 @@
     processedQueryContexts.add(queryContext);
     debugLog('✅ New query context, creating panel:', queryContext);
 
-    // Create container for side-by-side layout
-    const container = document.createElement('div');
-    container.className = 'hx-response-container';
-
-    // Move Claude's response into the container
-    const parent = responseElement.parentNode;
-    debugLog('Moving Claude response to container, parent:', parent);
-    parent.insertBefore(container, responseElement);
-    container.appendChild(responseElement);
-
-    // Add HundredX panel
+    // Create HundredX panel
     const hxPanel = createHundredXPanel();
-    container.appendChild(hxPanel);
-    
-    debugLog('🔴 PANEL ADDED TO DOM - should be visible now!');
-    debugLog('🔴 Container parent:', container.parentElement ? 'has parent' : 'no parent');
+
+    // Inject panel using vendor-specific strategy
+    const container = vendorAdapter.injectPanel(responseElement, hxPanel);
+
+    debugLog(`🔴 PANEL ADDED TO ${vendorAdapter.name} DOM - should be visible now!`);
+    debugLog('🔴 Container parent:', container?.parentElement ? 'has parent' : 'no parent');
     debugLog('🔴 Panel parent:', hxPanel.parentElement ? 'has parent' : 'no parent');
     debugLog('🔴 Panel in DOM:', document.contains(hxPanel) ? 'YES' : 'NO');
 
@@ -718,16 +1131,19 @@
       debugLog('🎬 Panel entrance animation triggered');
     });
 
+    // Get timing configuration from vendor adapter
+    const timing = vendorAdapter.getTimingConfig();
+
     // Get HundredX response from cache or make new API call
     setTimeout(async () => {
       try {
         let apiResponse;
-        
+
         // Check if we have cached result from early processing
         if (queryCache.has(query)) {
           debugLog('🎯 Using cached result from early processing:', query);
           const cacheEntry = queryCache.get(query);
-          
+
           if (cacheEntry.result) {
             // Result already available
             apiResponse = cacheEntry.result;
@@ -746,10 +1162,10 @@
           apiResponse = await api.processQuery(query);
           debugLog('✅ Direct API call completed');
         }
-        
+
         updatePanelContent(hxPanel, apiResponse);
         debugLog('✅ HundredX panel created and populated');
-        
+
       } catch (error) {
         debugLog('❌ Unexpected error in panel processing:', error);
         updatePanelContent(hxPanel, {
@@ -759,133 +1175,56 @@
           _retryable: true
         });
       }
-    }, 100); // Small delay to ensure panel is fully rendered
+    }, timing.processingDelay);
 
     // Set global references for retry functionality
     currentQuery = query;
     currentPanel = hxPanel;
   }
 
-  // Find Claude response containers - UPDATED
-  function findClaudeResponses() {
-    debugLog('Looking for Claude responses...');
-    
-    // Try your specific selector first
-    const primarySelector = "div[class='grid-cols-1 grid gap-2.5 [&_>_*]:min-w-0 standard-markdown']";
-    const primaryElements = document.querySelectorAll(primarySelector);
-    debugLog(`Found ${primaryElements.length} elements with primary selector`);
-    
-    // Also try other common Claude selectors
-    const fallbackSelectors = [
-      '[data-cy="message-text"]',
-      'article',
-      '.prose',
-      '.markdown',
-      '[data-testid*="message"]'
-    ];
-
-    const responses = new Set();
-    
-    // Add primary selector results
-    primaryElements.forEach(element => {
-      if (!processedResponses.has(element) && 
-          !element.closest('.hx-response-panel') &&
-          !element.querySelector('.hx-response-panel')) {
-        
-        const text = element.textContent?.trim();
-        debugLog('Primary selector element text:', text?.substring(0, 100) + '...');
-        if (text && text.length > 50) {
-          responses.add(element);
-          debugLog('✅ Added element from primary selector');
-        }
-      }
-    });
-    
-    // Try fallback selectors if we didn't find anything
-    if (responses.size === 0) {
-      debugLog('No primary elements found, trying fallback selectors...');
-      fallbackSelectors.forEach(selector => {
-        const elements = document.querySelectorAll(selector);
-        debugLog(`Found ${elements.length} elements with selector: ${selector}`);
-        
-        elements.forEach(element => {
-          if (!processedResponses.has(element) && 
-              !element.closest('.hx-response-panel') &&
-              !element.querySelector('.hx-response-panel')) {
-            
-            const text = element.textContent?.trim();
-            if (text && text.length > 50) {
-              responses.add(element);
-              debugLog(`✅ Added element from fallback selector: ${selector}`);
-            }
-          }
-        });
-      });
+  // Find AI response containers using vendor adapter
+  function findResponses() {
+    if (!vendorAdapter) {
+      debugLog('❌ No vendor adapter available');
+      return [];
     }
-
-    debugLog(`Total responses found: ${responses.size}`);
-    return Array.from(responses);
+    return vendorAdapter.findResponseContainers();
   }
 
-  // Process all unprocessed Claude responses
+  // Process all unprocessed AI responses
   async function processAllResponses() {
-    debugLog('🔄 Processing all responses...');
-    const responses = findClaudeResponses();
+    if (!vendorAdapter) {
+      debugLog('❌ No vendor adapter available');
+      return;
+    }
+
+    debugLog(`🔄 Processing all ${vendorAdapter.name} responses...`);
+    const responses = findResponses();
     debugLog(`Found ${responses.length} responses to process`);
-    
+
+    const timing = vendorAdapter.getTimingConfig();
+
     for (let i = 0; i < responses.length; i++) {
       const response = responses[i];
       debugLog(`Processing response ${i + 1}/${responses.length}`);
-      await processClaudeResponse(response);
+      await processResponse(response);
       // Small delay to avoid overwhelming the API
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, timing.processingDelay));
     }
     debugLog('✅ Finished processing all responses');
   }
 
-  // Set up input monitoring for early query processing
+  // Set up input monitoring for early query processing (vendor-agnostic)
   function setupInputMonitoring() {
-    debugLog('🎯 Setting up input monitoring for early processing...');
-    
-    // Find Claude's input field
-    const findInputField = () => {
-      const selectors = [
-        'textarea[placeholder*="Message"]',
-        'textarea[placeholder*="message"]', 
-        'textarea[data-testid*="input"]',
-        'textarea[contenteditable="true"]',
-        '.ProseMirror',
-        '[data-testid="chat-input"]',
-        'textarea',
-        'div[contenteditable="true"]'
-      ];
-      
-      debugLog('🔍 Searching for input field...');
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          debugLog('✅ Found input field with selector:', selector);
-          debugLog('📝 Input field details:', {
-            tagName: element.tagName,
-            placeholder: element.placeholder,
-            className: element.className,
-            id: element.id
-          });
-          return element;
-        } else {
-          debugLog('❌ No match for selector:', selector);
-        }
-      }
-      debugLog('🚨 NO INPUT FIELD FOUND! Available textareas/inputs:');
-      const allInputs = document.querySelectorAll('textarea, input[type="text"], div[contenteditable="true"]');
-      allInputs.forEach((input, index) => {
-        debugLog(`  ${index}: ${input.tagName} - class: "${input.className}" - placeholder: "${input.placeholder}" - id: "${input.id}"`);
-      });
-      return null;
-    };
+    if (!vendorAdapter) {
+      debugLog('❌ No vendor adapter available for input monitoring');
+      return;
+    }
+
+    debugLog(`🎯 Setting up ${vendorAdapter.name} input monitoring for early processing...`);
 
     const setupInputListener = () => {
-      const inputField = findInputField();
+      const inputField = vendorAdapter.findInputField();
       if (!inputField) {
         debugLog('❌ Could not find input field, retrying...');
         setTimeout(setupInputListener, 1000);
@@ -900,7 +1239,7 @@
           shiftKey: event.shiftKey,
           target: event.target.tagName
         });
-        
+
         if (event.type === 'keydown' && event.key !== 'Enter') {
           debugLog('⏭️ Not Enter key, ignoring');
           return;
@@ -909,12 +1248,12 @@
           debugLog('⏭️ Shift+Enter detected, allowing new line');
           return; // Allow Shift+Enter for new lines
         }
-        
+
         const query = inputField.value || inputField.textContent || '';
         debugLog('📝 Extracted query:', `"${query}" (length: ${query.length})`);
-        
+
         if (query.trim().length > 10) {
-          debugLog('🚀 User submitted query, starting early processing:', query.trim());
+          debugLog(`🚀 User submitted ${vendorAdapter.name} query, starting early processing:`, query.trim());
           processQueryEarly(query.trim());
         } else {
           debugLog('❌ Query too short, not processing');
@@ -923,53 +1262,51 @@
 
       debugLog('🎧 Adding keydown listener to input field');
       inputField.addEventListener('keydown', handleSubmit);
-      
+
       // Also listen for any form submissions
       const form = inputField.closest('form');
       if (form) {
         form.addEventListener('submit', handleSubmit);
       }
-      
-      debugLog('✅ Input monitoring set up');
+
+      debugLog(`✅ ${vendorAdapter.name} input monitoring set up`);
     };
 
     // Also try to monitor submit buttons as backup
     const setupButtonListener = () => {
       debugLog('🔍 Setting up button listener as backup...');
-      const buttonSelectors = [
-        'button[type="submit"]',
-        'button[data-testid*="send"]',
-        'button[aria-label*="Send"]',
-        'button[aria-label*="send"]',
-        '[data-testid="send-button"]'
-      ];
-      
-      for (const selector of buttonSelectors) {
-        const buttons = document.querySelectorAll(selector);
-        buttons.forEach(button => {
-          debugLog('🎯 Found submit button:', selector);
-          button.addEventListener('click', (event) => {
-            debugLog('🎯 Submit button clicked!');
-            const inputField = findInputField();
-            if (inputField) {
-              const query = inputField.value || inputField.textContent || '';
-              if (query.trim().length > 10) {
-                debugLog('🚀 Button click: starting early processing:', query.trim());
-                processQueryEarly(query.trim());
-              }
+      const buttons = vendorAdapter.findSubmitButtons();
+
+      buttons.forEach(button => {
+        debugLog('🎯 Found submit button');
+        button.addEventListener('click', (event) => {
+          debugLog('🎯 Submit button clicked!');
+          const inputField = vendorAdapter.findInputField();
+          if (inputField) {
+            const query = inputField.value || inputField.textContent || '';
+            if (query.trim().length > 10) {
+              debugLog(`🚀 Button click: starting ${vendorAdapter.name} early processing:`, query.trim());
+              processQueryEarly(query.trim());
             }
-          });
+          }
         });
-      }
+      });
     };
 
     setupInputListener();
     setupButtonListener();
   }
 
-  // Set up DOM observation for new responses
+  // Set up DOM observation for new responses (vendor-agnostic)
   function setupObserver() {
-    debugLog('Setting up DOM observer...');
+    if (!vendorAdapter) {
+      debugLog('❌ No vendor adapter available for observer');
+      return null;
+    }
+
+    debugLog(`Setting up ${vendorAdapter.name} DOM observer...`);
+    const timing = vendorAdapter.getTimingConfig();
+
     const observer = new MutationObserver(async (mutations) => {
       debugLog(`Observer triggered with ${mutations.length} mutations`);
       let hasNewContent = false;
@@ -991,9 +1328,10 @@
       }
 
       if (hasNewContent) {
-        debugLog('🔄 New content detected, processing after delay...');
-        // Debounce to avoid processing while Claude is still typing
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        debugLog(`🔄 New ${vendorAdapter.name} content detected, processing after delay...`);
+        // Debounce to avoid processing while AI is still typing
+        // Use vendor-specific debounce delay
+        await new Promise(resolve => setTimeout(resolve, timing.debounceDelay));
         await processAllResponses();
       }
     });
@@ -1003,7 +1341,7 @@
       subtree: true
     });
 
-    debugLog('✅ DOM observer set up');
+    debugLog(`✅ ${vendorAdapter.name} DOM observer set up`);
     return observer;
   }
 

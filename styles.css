@@ -255,18 +255,26 @@
 }
 
 .hx-response-panel {
-  flex: 1;
+  flex: 1; /* Default: 50/50 split with AI response (Claude) */
   min-width: 400px;
   max-width: none;
   background: transparent;
   border-radius: 8px;
   border: 1px solid rgba(0, 138, 209, 0.1);
   position: relative;
-  
+
   /* Animation setup */
   opacity: 0;
   transform: translateX(30px) scale(0.95);
   transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Gemini-specific: fixed width to prevent AI response truncation */
+.hx-vendor-gemini .hx-response-panel {
+  flex: 0 0 420px;
+  min-width: 380px;
+  max-width: 480px;
+  font-family: Google Sans Flex, Google Sans, Helvetica Neue, sans-serif;
 }
 
 .hx-response-panel.hx-animate-in {
@@ -442,18 +450,28 @@
   }
 }
 
-/* Claude response styling within our container */
+/* AI response styling within our container - gets remaining space */
 .hx-response-container > div:first-child {
   flex: 1;
-  min-width: 400px;
+  min-width: 400px; /* Default for Claude */
   max-width: none;
   padding-right: 8px;
+}
+
+/* Gemini-specific: allow AI response to shrink to prevent truncation */
+.hx-vendor-gemini > div:first-child {
+  min-width: 0;
 }
 
 /* Container overflow and spacing */
 .hx-response-container {
   overflow-x: auto;
   margin-bottom: 24px;
+}
+
+/* Gemini-specific: no left margin due to tight spacing */
+.hx-response-container.hx-vendor-gemini {
+  margin-left: 0;
 }
 
 /* Responsive breakpoints */
@@ -463,15 +481,27 @@
     margin-left: 0;
     padding: 0 20px;
   }
-  
+
   .hx-response-panel {
-    flex: 1;
+    flex: 1; /* Default for Claude */
     min-width: 320px;
     max-width: none;
   }
-  
+
+  /* Gemini-specific: smaller fixed width on medium screens */
+  .hx-vendor-gemini .hx-response-panel {
+    flex: 0 0 380px;
+    min-width: 320px;
+    max-width: 420px;
+  }
+
   .hx-response-container > div:first-child {
-    min-width: 350px;
+    min-width: 350px; /* Default for Claude */
+  }
+
+  /* Gemini-specific: allow shrinking on medium screens */
+  .hx-vendor-gemini > div:first-child {
+    min-width: 0;
   }
 }
 
@@ -565,10 +595,26 @@
   animation: spin 1s linear infinite;
 }
 
+/* Gemini-specific: smaller, more compact spinner for tight spacing */
+.hx-vendor-gemini .hx-header-spinner {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  flex-shrink: 0;
+}
+
 .hx-header-loading-text {
   color: #64748b;
   font-size: 12px;
   font-weight: 500;
+}
+
+/* Gemini-specific: smaller text and prevent wrapping for tight spacing */
+.hx-vendor-gemini .hx-header-loading-text {
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @keyframes spin {
