@@ -6,8 +6,8 @@
  * - Vendor-agnostic architecture using Adapter Pattern
  */
 (() => {
-  const API_BASE_URL = 'http://localhost:3000'; // Mock API server
-  //const API_BASE_URL = 'https://pulse.ngrok.pizza'; // Production API (commented out for testing)
+  //const API_BASE_URL = 'http://localhost:3000'; // Mock API server
+  const API_BASE_URL = 'https://pulse.ngrok.pizza'; // Production API (commented out for testing)
   const LOGO_URL = chrome.runtime.getURL("HundredX+Logo+-+Blue+Registered-640w.webp");
 
   // ============================================================================
