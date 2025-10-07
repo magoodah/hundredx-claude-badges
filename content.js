@@ -155,7 +155,6 @@
         ],
         buttons: [
           'button[aria-label*="Send"]',
-          'button:has-text("Send")',
           'button[type="submit"]'
         ],
         userQueries: [
