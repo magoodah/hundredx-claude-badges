@@ -227,6 +227,8 @@
       // Default implementation: wrap response and panel in container
       const container = document.createElement('div');
       container.className = 'hx-response-container';
+      // Add vendor-specific class for targeted styling
+      container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
 
       const parent = responseElement.parentNode;
       debugLog(`Injecting panel for ${this.name}, parent:`, parent);
@@ -412,6 +414,8 @@
       // Create wrapper for side-by-side layout
       const container = document.createElement('div');
       container.className = 'hx-response-container';
+      // Add vendor-specific class for targeted styling
+      container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
 
       // Insert container after model-response
       modelResponse.after(container);

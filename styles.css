@@ -454,6 +454,10 @@
 .hx-response-container {
   overflow-x: auto;
   margin-bottom: 24px;
+}
+
+/* Gemini-specific: no left margin due to tight spacing */
+.hx-response-container.hx-vendor-gemini {
   margin-left: 0;
 }
 
@@ -566,10 +570,26 @@
   animation: spin 1s linear infinite;
 }
 
+/* Gemini-specific: smaller, more compact spinner for tight spacing */
+.hx-vendor-gemini .hx-header-spinner {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  flex-shrink: 0;
+}
+
 .hx-header-loading-text {
   color: #64748b;
   font-size: 12px;
   font-weight: 500;
+}
+
+/* Gemini-specific: smaller text and prevent wrapping for tight spacing */
+.hx-vendor-gemini .hx-header-loading-text {
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @keyframes spin {
