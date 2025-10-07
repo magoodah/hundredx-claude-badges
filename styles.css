@@ -274,6 +274,7 @@
   flex: 0 0 420px;
   min-width: 380px;
   max-width: 480px;
+  font-family: Google Sans Flex, Google Sans, Helvetica Neue, sans-serif;
 }
 
 .hx-response-panel.hx-animate-in {
