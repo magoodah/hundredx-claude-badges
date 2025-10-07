@@ -24,7 +24,7 @@
   },
   "host_permissions": [
     "*://claude.ai/*",
-    "*://perplexity.ai/*",
+    "*://*.perplexity.ai/*",
     "*://gemini.google.com/*",
     "http://localhost:3000/*",
     "https://pulse.ngrok.pizza/*"
@@ -33,7 +33,7 @@
     {
       "matches": [
         "*://claude.ai/*",
-        "*://perplexity.ai/*",
+        "*://*.perplexity.ai/*",
         "*://gemini.google.com/*"
       ],
       "js": [
