@@ -165,7 +165,7 @@
       timing: {
         processingDelay: 150,  // React needs slightly more time
         debounceDelay: 1500,   // More conservative for React reactivity
-        minResponseLength: 500  // Higher threshold to avoid UI elements
+        minResponseLength: 300  // Balanced threshold for real responses
       }
     }
   };
@@ -652,15 +652,18 @@
 
       // Meta-specific: skip elements that are too small (likely fragments)
       const text = element.textContent?.trim();
-      if (!text || text.length < 500) {
-        debugLog('Skipping Meta.ai element - too short (< 500 chars)');
+      if (!text || text.length < 300) {
+        debugLog('Skipping Meta.ai element - too short (< 300 chars)');
         return false;
       }
 
-      // Must have sentence-like structure (multiple sentences with periods)
-      const sentenceCount = (text.match(/\.\s+[A-Z]/g) || []).length;
-      if (sentenceCount < 2) {
-        debugLog('Skipping Meta.ai element - not enough sentence structure');
+      // Check for response-like content (has some punctuation and structure)
+      // More lenient than before to handle streaming responses
+      const hasPunctuation = /[.!?]/.test(text);
+      const hasMultipleWords = text.split(/\s+/).length > 20;
+
+      if (!hasPunctuation || !hasMultipleWords) {
+        debugLog('Skipping Meta.ai element - not enough content structure');
         return false;
       }
 
@@ -704,9 +707,10 @@
 
       // Skip if we're on landing page with no conversation yet
       // Check for presence of actual conversation indicators
-      const hasConversation = document.body.textContent.length > 5000; // Landing page is shorter
+      const bodyTextLength = document.body.textContent.length;
+      const hasConversation = bodyTextLength > 3000; // Landing page is shorter
       if (!hasConversation) {
-        debugLog('Skipping - appears to be landing page (no substantial content)');
+        debugLog(`Skipping - appears to be landing page (body text: ${bodyTextLength} chars)`);
         return [];
       }
 
@@ -736,12 +740,14 @@
         const directChildren = div.children.length;
 
         // Good indicators of a response container:
-        if (text.length > 300 && text.length < 10000) score += 2;
+        if (text.length > 300 && text.length < 15000) score += 2;
         if (childDivCount > 2 && childDivCount < 50) score += 1;
         if (directChildren > 1 && directChildren < 15) score += 1;
 
-        // Has paragraph-like content
-        if (text.includes('\n\n') || text.includes('. ')) score += 1;
+        // Has paragraph-like content (punctuation and spacing)
+        const hasPunctuation = /[.!?]/.test(text);
+        const wordCount = text.split(/\s+/).length;
+        if (hasPunctuation && wordCount > 20) score += 2;
 
         // Not the whole page
         if (childDivCount < 100) score += 1;
