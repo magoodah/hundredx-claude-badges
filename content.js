@@ -1,6 +1,6 @@
 /**
  * HundredX AI Response Enhancement
- * - Detects AI assistant responses (Claude, Gemini, Perplexity) and injects HundredX-powered insights
+ * - Detects AI assistant responses (Claude, Gemini, Perplexity, Meta.ai) and injects HundredX-powered insights
  * - Creates side-by-side experience with matching styling
  * - Uses real HundredX API for commercial query enhancement
  * - Vendor-agnostic architecture using Adapter Pattern
@@ -132,6 +132,40 @@
         processingDelay: 100,
         debounceDelay: 1000,
         minResponseLength: 200
+      }
+    },
+
+    meta: {
+      name: 'Meta',
+      hostnames: ['meta.ai'],
+
+      selectors: {
+        responses: {
+          primary: 'div.x78zum5.xdt5ytf.x1na6gtj.xsag5q8.x18yw6bp.xh8yej3',
+          fallbacks: [
+            // Meta.ai uses obfuscated classes - rely on heuristic instead
+            // Removed overly generic selectors that match UI elements
+          ]
+        },
+        inputs: [
+          'div[role="textbox"][aria-label*="Ask"]',
+          'div[contenteditable="true"][role="textbox"]',
+          'div[contenteditable="true"]'
+        ],
+        buttons: [
+          'button[aria-label*="Send"]',
+          'button[type="submit"]'
+        ],
+        userQueries: [
+          'span.x1lliihq',
+          'span[class*="x1lliihq"]'
+        ]
+      },
+
+      timing: {
+        processingDelay: 150,  // React needs slightly more time
+        debounceDelay: 1500,   // More conservative for React reactivity
+        minResponseLength: 300  // Balanced threshold for real responses
       }
     }
   };
@@ -536,6 +570,297 @@
     }
   }
 
+  /**
+   * Meta.ai-specific adapter
+   */
+  class MetaAdapter extends VendorAdapter {
+    extractQuery(responseElement) {
+      debugLog('Attempting to extract query from Meta.ai context');
+
+      // Common UI text patterns to reject
+      const uiTextPatterns = [
+        /^new chat$/i,
+        /^settings$/i,
+        /^help$/i,
+        /^log\s*in$/i,
+        /^sign\s*up$/i,
+        /^menu$/i
+      ];
+
+      // Method 1: Try to find query in heading/span elements using Meta's class patterns
+      const querySpans = document.querySelectorAll(this.config.selectors.userQueries.join(', '));
+      if (querySpans.length > 0) {
+        // Get the most recent query (usually first visible one)
+        for (let i = 0; i < querySpans.length; i++) {
+          const element = querySpans[i];
+          const text = element.textContent?.trim();
+
+          // Skip UI text
+          if (text && uiTextPatterns.some(pattern => pattern.test(text))) {
+            continue;
+          }
+
+          // Ensure it's a reasonable query length and not part of our panel
+          if (text && text.length > 10 && text.length < 500 && !element.closest('.hx-response-panel')) {
+            debugLog('Found Meta.ai query via span element:', text);
+            return text;
+          }
+        }
+      }
+
+      // Method 2: Look for page title
+      const pageTitle = document.title;
+      if (pageTitle && pageTitle !== 'Meta AI' && pageTitle.length > 3 && !pageTitle.includes('|')) {
+        debugLog('Found Meta.ai query via page title:', pageTitle);
+        return pageTitle;
+      }
+
+      // Method 3: Walk up from response to find conversation structure
+      debugLog('Trying method 3: walking up DOM tree');
+      let currentElement = responseElement;
+      let depth = 0;
+
+      while (currentElement && depth < 15) {
+        // Look for siblings that might contain user query text
+        const siblings = Array.from(currentElement.parentNode?.children || []);
+        for (const sibling of siblings) {
+          // Look for elements with potential query text (not the response itself)
+          if (sibling !== responseElement && sibling !== currentElement) {
+            const text = sibling.textContent?.trim();
+            if (text && text.length > 10 && text.length < 500 &&
+                !text.includes('Wegovy and Zepbound are') && // avoid response text
+                !sibling.closest('.hx-response-panel')) {
+              debugLog('Found Meta.ai query via sibling:', text);
+              return text;
+            }
+          }
+        }
+
+        currentElement = currentElement.parentNode;
+        depth++;
+      }
+
+      debugLog('❌ Could not extract query from Meta.ai context');
+      return null;
+    }
+
+    validateResponse(element) {
+      // Call parent validation first
+      if (!super.validateResponse(element)) {
+        return false;
+      }
+
+      // Meta-specific: skip elements that are too small (likely fragments)
+      const text = element.textContent?.trim();
+      if (!text || text.length < 300) {
+        debugLog('Skipping Meta.ai element - too short (< 300 chars)');
+        return false;
+      }
+
+      // Check for response-like content (has some punctuation and structure)
+      // More lenient than before to handle streaming responses
+      const hasPunctuation = /[.!?]/.test(text);
+      const hasMultipleWords = text.split(/\s+/).length > 20;
+
+      if (!hasPunctuation || !hasMultipleWords) {
+        debugLog('Skipping Meta.ai element - not enough content structure');
+        return false;
+      }
+
+      // Skip input containers - check if this element contains the contenteditable input
+      const hasInput = element.querySelector('div[contenteditable="true"]') ||
+                      element.querySelector('textarea[contenteditable="true"]');
+      if (hasInput) {
+        debugLog('Skipping Meta.ai element - contains input field');
+        return false;
+      }
+
+      // Skip if this element IS the input or very close to it
+      const isInputArea = element.matches('[contenteditable="true"]') ||
+                         element.closest('[role="textbox"]') === element;
+      if (isInputArea) {
+        debugLog('Skipping Meta.ai element - is input area');
+        return false;
+      }
+
+      // Skip user query displays - they match userQuery selectors
+      const userQuerySelectors = this.config.selectors.userQueries.join(', ');
+      if (element.matches(userQuerySelectors) || element.querySelector(userQuerySelectors)) {
+        // Check if the matching element is the bulk of the content
+        const queryEl = element.matches(userQuerySelectors) ? element : element.querySelector(userQuerySelectors);
+        const queryTextLength = queryEl?.textContent?.trim().length || 0;
+        // If the query element contains most of the text, this is likely a query display
+        if (queryTextLength > text.length * 0.7) {
+          debugLog('Skipping Meta.ai user query display element');
+          return false;
+        }
+      }
+
+      // Skip containers that include the input area
+      // Only skip if the element itself is small (likely the input bar)
+      if (element.querySelector('button[aria-label*="Send"]')) {
+        // If the element is short, it's probably the input bar itself
+        if (text.length < 1000) {
+          debugLog('Skipping Meta.ai input/button container');
+          return false;
+        }
+        // If it's long, it might be a valid response that happens to have
+        // the input bar as a sibling in a common parent - allow it
+      }
+
+      // Skip navigation/sidebar elements
+      if (element.closest('[role="navigation"]') || element.closest('nav')) {
+        debugLog('Skipping Meta.ai navigation element');
+        return false;
+      }
+
+      return true;
+    }
+
+    injectPanel(responseElement, panel) {
+      debugLog('Injecting panel for Meta.ai with alignment fix');
+
+      // Meta.ai structure often includes user query at top of responseElement
+      // Check if this element contains a query heading
+      const querySpan = responseElement.querySelector(this.config.selectors.userQueries.join(', '));
+
+      if (querySpan) {
+        debugLog('Detected user query within response element, finding actual response content');
+
+        // Find the actual response content (usually a sibling after the query)
+        // Look for div children that are NOT the query container
+        const children = Array.from(responseElement.children);
+        const queryParent = querySpan.closest('div');
+
+        // Find first substantial content div that's not the query
+        for (const child of children) {
+          if (child !== queryParent && child.textContent.length > 100) {
+            debugLog('Found actual response content child:', child);
+
+            // Wrap just the response content + panel
+            const container = document.createElement('div');
+            container.className = 'hx-response-container';
+            container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
+
+            // Insert container before the content child
+            child.parentNode.insertBefore(container, child);
+            container.appendChild(child);
+            container.appendChild(panel);
+
+            debugLog('✅ Meta.ai panel injected aligned with response content');
+            return container;
+          }
+        }
+      }
+
+      // Fallback: use default injection if no query detected
+      debugLog('No query detected, using standard injection');
+      const container = document.createElement('div');
+      container.className = 'hx-response-container';
+      container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
+
+      const parent = responseElement.parentNode;
+      parent.insertBefore(container, responseElement);
+      container.appendChild(responseElement);
+      container.appendChild(panel);
+
+      debugLog('✅ Meta.ai panel injected with standard method');
+      return container;
+    }
+
+    findResponseContainers() {
+      debugLog(`Looking for ${this.name} responses...`);
+      const responses = new Set();
+
+      // Skip if we're on landing page with no conversation yet
+      // Check for presence of actual conversation indicators
+      const bodyTextLength = document.body.textContent.length;
+      const hasConversation = bodyTextLength > 3000; // Landing page is shorter
+      if (!hasConversation) {
+        debugLog(`Skipping - appears to be landing page (body text: ${bodyTextLength} chars)`);
+        return [];
+      }
+
+      // Try base class logic first (primary + fallbacks)
+      const baseResponses = super.findResponseContainers();
+      baseResponses.forEach(r => responses.add(r));
+
+      if (responses.size > 0) {
+        debugLog(`✅ Found ${responses.size} responses using standard selectors`);
+        return Array.from(responses);
+      }
+
+      // If standard selectors failed, use heuristic approach
+      // Meta.ai uses Facebook's obfuscated classes which change frequently
+      debugLog('Standard selectors failed, using heuristic approach...');
+
+      const allDivs = document.querySelectorAll('div');
+      const candidates = [];
+
+      allDivs.forEach(div => {
+        const text = div.textContent?.trim();
+        if (!text || text.length < this.config.timing.minResponseLength) return;
+
+        // Calculate a "response score" based on characteristics
+        let score = 0;
+        const childDivCount = div.querySelectorAll('div').length;
+        const directChildren = div.children.length;
+
+        // Good indicators of a response container:
+        if (text.length > 300 && text.length < 15000) score += 2;
+        if (childDivCount > 2 && childDivCount < 50) score += 1;
+        if (directChildren > 1 && directChildren < 15) score += 1;
+
+        // Has paragraph-like content (punctuation and spacing)
+        const hasPunctuation = /[.!?]/.test(text);
+        const wordCount = text.split(/\s+/).length;
+        if (hasPunctuation && wordCount > 20) score += 2;
+
+        // Not the whole page
+        if (childDivCount < 100) score += 1;
+
+        if (score >= 3 && !processedResponses.has(div) && this.validateResponse(div)) {
+          candidates.push({ div, score, textLength: text.length });
+        }
+      });
+
+      // Sort by score (descending), then by text length (descending)
+      candidates.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.textLength - a.textLength;
+      });
+
+      // Deduplicate: remove nested elements
+      // Keep higher-scoring parents, exclude children that are inside them
+      const deduplicated = [];
+      for (const candidate of candidates) {
+        const isNested = deduplicated.some(existing =>
+          existing.div.contains(candidate.div) || candidate.div.contains(existing.div)
+        );
+
+        if (!isNested) {
+          deduplicated.push(candidate);
+        } else {
+          debugLog('⏭️ Skipping nested candidate');
+        }
+
+        // For Meta.ai, limit to 1 response since it shows one at a time
+        // Other vendors might show multiple responses in a conversation view
+        const maxResponses = 1;
+        if (deduplicated.length >= maxResponses) break;
+      }
+
+      // Add deduplicated responses
+      deduplicated.forEach(({ div, score, textLength }) => {
+        responses.add(div);
+        debugLog(`✅ Added element via heuristic (score: ${score}, text length: ${textLength})`);
+      });
+
+      debugLog(`Total ${this.name} responses found: ${responses.size}`);
+      return Array.from(responses);
+    }
+  }
+
   // ============================================================================
   // VENDOR DETECTION & FACTORY
   // ============================================================================
@@ -577,6 +902,8 @@
         return new GeminiAdapter(config);
       case 'perplexity':
         return new PerplexityAdapter(config);
+      case 'meta':
+        return new MetaAdapter(config);
       default:
         debugLog('⚠️ Unknown vendor key:', vendorKey);
         return null;
@@ -1194,10 +1521,17 @@
     }
 
     if (processedResponses.has(responseElement)) {
-      debugLog('❌ Response already processed, skipping');
+      debugLog('❌ Response already processed, skipping', {
+        elementTag: responseElement.tagName,
+        textPreview: responseElement.textContent?.trim().substring(0, 100)
+      });
       return;
     }
     processedResponses.add(responseElement);
+    debugLog('✅ Response marked as processed', {
+      elementTag: responseElement.tagName,
+      textPreview: responseElement.textContent?.trim().substring(0, 100)
+    });
 
     // Check if this is a substantial response worth augmenting
     if (!isSubstantialResponse(responseElement)) {

@@ -26,6 +26,8 @@
     "*://claude.ai/*",
     "*://*.perplexity.ai/*",
     "*://gemini.google.com/*",
+    "*://meta.ai/*",
+    "*://*.meta.ai/*",
     "http://localhost:3000/*",
     "https://pulse.ngrok.pizza/*"
   ],
@@ -34,7 +36,9 @@
       "matches": [
         "*://claude.ai/*",
         "*://*.perplexity.ai/*",
-        "*://gemini.google.com/*"
+        "*://gemini.google.com/*",
+        "*://meta.ai/*",
+        "*://*.meta.ai/*"
       ],
       "js": [
         "marked.min.js",
