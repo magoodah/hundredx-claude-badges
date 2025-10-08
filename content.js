@@ -667,6 +667,22 @@
         return false;
       }
 
+      // Skip input containers - check if this element contains the contenteditable input
+      const hasInput = element.querySelector('div[contenteditable="true"]') ||
+                      element.querySelector('textarea[contenteditable="true"]');
+      if (hasInput) {
+        debugLog('Skipping Meta.ai element - contains input field');
+        return false;
+      }
+
+      // Skip if this element IS the input or very close to it
+      const isInputArea = element.matches('[contenteditable="true"]') ||
+                         element.closest('[role="textbox"]') === element;
+      if (isInputArea) {
+        debugLog('Skipping Meta.ai element - is input area');
+        return false;
+      }
+
       // Skip user query displays - they match userQuery selectors
       const userQuerySelectors = this.config.selectors.userQueries.join(', ');
       if (element.matches(userQuerySelectors) || element.querySelector(userQuerySelectors)) {
