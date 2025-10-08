@@ -474,6 +474,24 @@
   margin-left: 0;
 }
 
+/* Meta.ai-specific: ensure proper vertical alignment */
+.hx-response-container.hx-vendor-meta {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.hx-vendor-meta > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.hx-vendor-meta .hx-response-panel {
+  flex: 0 0 400px;
+  min-width: 360px;
+  max-width: 440px;
+  align-self: flex-start;
+}
+
 /* Responsive breakpoints */
 @media (max-width: 1400px) {
   .hx-response-container {

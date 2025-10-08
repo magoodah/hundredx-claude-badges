@@ -701,6 +701,25 @@
       return true;
     }
 
+    injectPanel(responseElement, panel) {
+      debugLog('Injecting panel for Meta.ai with alignment fix');
+
+      // Create container for side-by-side layout
+      const container = document.createElement('div');
+      container.className = 'hx-response-container';
+      container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
+
+      const parent = responseElement.parentNode;
+
+      // Insert container, move response in, add panel
+      parent.insertBefore(container, responseElement);
+      container.appendChild(responseElement);
+      container.appendChild(panel);
+
+      debugLog('✅ Meta.ai panel injected with proper alignment');
+      return container;
+    }
+
     findResponseContainers() {
       debugLog(`Looking for ${this.name} responses...`);
       const responses = new Set();
