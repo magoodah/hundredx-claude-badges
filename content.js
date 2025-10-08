@@ -704,19 +704,51 @@
     injectPanel(responseElement, panel) {
       debugLog('Injecting panel for Meta.ai with alignment fix');
 
-      // Create container for side-by-side layout
+      // Meta.ai structure often includes user query at top of responseElement
+      // Check if this element contains a query heading
+      const querySpan = responseElement.querySelector(this.config.selectors.userQueries.join(', '));
+
+      if (querySpan) {
+        debugLog('Detected user query within response element, finding actual response content');
+
+        // Find the actual response content (usually a sibling after the query)
+        // Look for div children that are NOT the query container
+        const children = Array.from(responseElement.children);
+        const queryParent = querySpan.closest('div');
+
+        // Find first substantial content div that's not the query
+        for (const child of children) {
+          if (child !== queryParent && child.textContent.length > 100) {
+            debugLog('Found actual response content child:', child);
+
+            // Wrap just the response content + panel
+            const container = document.createElement('div');
+            container.className = 'hx-response-container';
+            container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
+
+            // Insert container before the content child
+            child.parentNode.insertBefore(container, child);
+            container.appendChild(child);
+            container.appendChild(panel);
+
+            debugLog('✅ Meta.ai panel injected aligned with response content');
+            return container;
+          }
+        }
+      }
+
+      // Fallback: use default injection if no query detected
+      debugLog('No query detected, using standard injection');
       const container = document.createElement('div');
       container.className = 'hx-response-container';
       container.classList.add(`hx-vendor-${this.name.toLowerCase()}`);
 
       const parent = responseElement.parentNode;
-
-      // Insert container, move response in, add panel
       parent.insertBefore(container, responseElement);
       container.appendChild(responseElement);
       container.appendChild(panel);
 
-      debugLog('✅ Meta.ai panel injected with proper alignment');
+      debugLog('✅ Meta.ai panel injected with standard method');
       return container;
     }
 
