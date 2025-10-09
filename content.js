@@ -165,7 +165,7 @@
       timing: {
         processingDelay: 150,  // React needs slightly more time
         debounceDelay: 1500,   // More conservative for React reactivity
-        minResponseLength: 300  // Balanced threshold for real responses
+        minResponseLength: 200  // Lowered to catch shorter but valid responses
       }
     }
   };
@@ -652,8 +652,8 @@
 
       // Meta-specific: skip elements that are too small (likely fragments)
       const text = element.textContent?.trim();
-      if (!text || text.length < 300) {
-        debugLog('Skipping Meta.ai element - too short (< 300 chars)');
+      if (!text || text.length < 200) {
+        debugLog('Skipping Meta.ai element - too short (< 200 chars)');
         return false;
       }
 
@@ -798,6 +798,11 @@
       const candidates = [];
 
       allDivs.forEach(div => {
+        // Skip HundredX extension elements (FAB, panels, etc.)
+        if (div.classList.toString().includes('hx-') || div.closest('[class*="hx-"]')) {
+          return;
+        }
+
         const text = div.textContent?.trim();
         if (!text || text.length < this.config.timing.minResponseLength) return;
 
@@ -920,12 +925,15 @@
 
   // Track processed responses to avoid duplicates
   const processedResponses = new WeakSet();
-  
+
   // Track processed query contexts to prevent duplicate API calls
   const processedQueryContexts = new Set();
-  
+
   // Cache for API responses to avoid duplicate calls and enable parallel processing
   const queryCache = new Map(); // Map<query, {promise, result, timestamp}>
+
+  // Demo mode state (loaded from chrome.storage)
+  let isDemoModeEnabled = false;
   
   // Clean up old contexts and cache periodically to prevent memory buildup
   setInterval(() => {
@@ -962,7 +970,8 @@
 
   // Process query immediately when user submits (parallel with Claude)
   async function processQueryEarly(query) {
-    debugLog('⚡ Processing query early (parallel with Claude):', query);
+    debugLog('⚡ Processing query early:', `"${query}"`);
+    debugLog('⚡ Query length:', query.length);
 
     // Check if extension is enabled
     const settings = await api.getSettings();
@@ -977,14 +986,52 @@
       return queryCache.get(query);
     }
 
-    // Start API call immediately
+    // DEMO MODE INTERCEPT: Check if query matches a demo question
+    if (isDemoModeEnabled) {
+      debugLog('🎬 Demo mode is enabled, checking for match...');
+      debugLog('🔍 Query to match:', `"${query}"`);
+      debugLog('🔍 Query length:', query.length);
+      debugLog('🔍 Query normalized:', `"${normalizeString(query)}"`);
+
+      const demoQuestion = findDemoQuestion(query);
+      if (demoQuestion) {
+        debugLog('🎬 Demo mode: Using pre-loaded response for:', demoQuestion.id);
+
+        // Create resolved promise with demo response
+        const demoPromise = Promise.resolve(demoQuestion.response);
+        const cacheEntry = {
+          promise: demoPromise,
+          result: demoQuestion.response,
+          timestamp: Date.now()
+        };
+
+        queryCache.set(query, cacheEntry);
+        debugLog('✅ Demo response ready:', demoQuestion.id);
+        debugLog('✅ Demo response cached with key:', `"${query}"`);
+        debugLog('✅ Cache now has', queryCache.size, 'entries');
+        return cacheEntry;
+      } else {
+        debugLog('🎬 Demo mode active but no match found, falling back to API');
+        debugLog('🔍 Available demo questions:');
+        if (typeof DEMO_QUESTIONS !== 'undefined') {
+          DEMO_QUESTIONS.forEach(q => {
+            const similarity = stringSimilarity(query, q.question);
+            debugLog(`   - ${q.id}: "${q.question}" (similarity: ${Math.round(similarity * 100)}%)`);
+          });
+        } else {
+          debugLog('❌ DEMO_QUESTIONS not loaded!');
+        }
+      }
+    }
+
+    // Normal flow: Start API call immediately
     const apiPromise = api.processQuery(query);
     const cacheEntry = {
       promise: apiPromise,
       result: null,
       timestamp: Date.now()
     };
-    
+
     queryCache.set(query, cacheEntry);
     debugLog('✅ Started early API call for query:', query);
 
@@ -1546,7 +1593,8 @@
       return;
     }
 
-    debugLog('✅ Extracted query:', query);
+    debugLog('✅ Extracted query:', `"${query}"`);
+    debugLog('✅ Extracted query length:', query.length);
 
     // Create unique context to prevent duplicate panels for same query+response
     const queryContext = createQueryContext(query, responseElement);
@@ -1583,6 +1631,10 @@
         let apiResponse;
 
         // Check if we have cached result from early processing
+        debugLog('🔍 Checking cache for query:', `"${query}"`);
+        debugLog('🔍 Cache has query?', queryCache.has(query));
+        debugLog('🔍 Cache keys:', Array.from(queryCache.keys()));
+
         if (queryCache.has(query)) {
           debugLog('🎯 Using cached result from early processing:', query);
           const cacheEntry = queryCache.get(query);
@@ -1788,6 +1840,369 @@
     return observer;
   }
 
+  // Load demo mode state from storage
+  async function loadDemoMode() {
+    try {
+      const settings = await api.getSettings();
+      isDemoModeEnabled = settings.demoMode || false;
+      debugLog('📋 Demo mode loaded:', isDemoModeEnabled);
+    } catch (error) {
+      debugLog('❌ Error loading demo mode:', error);
+      isDemoModeEnabled = false;
+    }
+  }
+
+  // Normalize string for matching (lowercase, trim, collapse whitespace)
+  function normalizeString(str) {
+    return str.toLowerCase().trim().replace(/\s+/g, ' ');
+  }
+
+  // Calculate string similarity (0-1, where 1 is identical)
+  function stringSimilarity(str1, str2) {
+    const s1 = normalizeString(str1);
+    const s2 = normalizeString(str2);
+
+    // Exact match after normalization
+    if (s1 === s2) return 1.0;
+
+    // Simple character-based similarity
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+
+    if (longer.length === 0) return 1.0;
+
+    // Count matching characters
+    let matches = 0;
+    for (let i = 0; i < shorter.length; i++) {
+      if (shorter[i] === longer[i]) matches++;
+    }
+
+    return matches / longer.length;
+  }
+
+  // Match query against demo questions
+  function findDemoQuestion(query) {
+    if (!isDemoModeEnabled || !DEMO_QUESTIONS) {
+      debugLog('🔍 findDemoQuestion: Demo mode disabled or no questions');
+      return null;
+    }
+
+    const normalizedQuery = normalizeString(query);
+    debugLog('🔍 findDemoQuestion: Searching for match');
+    debugLog('   Query (raw):', `"${query}"`);
+    debugLog('   Query (normalized):', `"${normalizedQuery}"`);
+
+    // First pass: exact match
+    for (const demoQ of DEMO_QUESTIONS) {
+      const normalizedDemoQ = normalizeString(demoQ.question);
+      debugLog(`   Checking exact match with ${demoQ.id}:`);
+      debugLog(`      Demo Q (normalized): "${normalizedDemoQ}"`);
+      debugLog(`      Match: ${normalizedDemoQ === normalizedQuery}`);
+
+      if (normalizedDemoQ === normalizedQuery) {
+        debugLog('🎯 Exact match found for demo question:', demoQ.id);
+        return demoQ;
+      }
+    }
+
+    // Second pass: fuzzy match (95% similarity threshold)
+    debugLog('   No exact match, trying fuzzy match (95% threshold)...');
+    for (const demoQ of DEMO_QUESTIONS) {
+      const similarity = stringSimilarity(query, demoQ.question);
+      debugLog(`   ${demoQ.id}: ${Math.round(similarity * 100)}% similar`);
+
+      if (similarity >= 0.95) {
+        debugLog(`🎯 Fuzzy match found for demo question: ${demoQ.id} (${Math.round(similarity * 100)}% similar)`);
+        return demoQ;
+      }
+    }
+
+    debugLog('❌ No demo question match found for:', query);
+    return null;
+  }
+
+  // ============================================================================
+  // DEMO MODE FAB (Floating Action Button)
+  // ============================================================================
+
+  let demoFAB = null;
+  let demoFABPanel = null;
+
+  // Create FAB HTML structure
+  function createDemoFAB() {
+    if (!DEMO_QUESTIONS || DEMO_QUESTIONS.length === 0) {
+      debugLog('❌ No demo questions available');
+      return null;
+    }
+
+    debugLog('🎬 Creating demo FAB');
+
+    const fab = document.createElement('div');
+    fab.className = 'hx-demo-fab';
+
+    // Create button
+    const button = document.createElement('button');
+    button.className = 'hx-demo-fab-button';
+    button.innerHTML = `
+      <span class="hx-demo-status-dot"></span>
+      <span class="hx-demo-fab-text">🎬 Demo (${DEMO_QUESTIONS.length})</span>
+    `;
+
+    // Create panel
+    const panel = document.createElement('div');
+    panel.className = 'hx-demo-panel';
+
+    // Panel header
+    const header = document.createElement('div');
+    header.className = 'hx-demo-panel-header';
+    header.innerHTML = `
+      <span class="hx-demo-panel-title">Demo Questions</span>
+      <button class="hx-demo-panel-close">×</button>
+    `;
+
+    // Questions list
+    const list = document.createElement('div');
+    list.className = 'hx-demo-questions-list';
+
+    // Add questions
+    DEMO_QUESTIONS.forEach((q, index) => {
+      const item = document.createElement('div');
+      item.className = 'hx-demo-question-item';
+      item.dataset.questionId = q.id;
+      item.dataset.questionText = q.question;
+      item.innerHTML = `
+        <div class="hx-demo-question-number">${index + 1}</div>
+        <div class="hx-demo-question-text">${q.question}</div>
+      `;
+      list.appendChild(item);
+    });
+
+    panel.appendChild(header);
+    panel.appendChild(list);
+    fab.appendChild(button);
+    fab.appendChild(panel);
+
+    // Event listeners
+    button.addEventListener('click', toggleDemoPanel);
+    header.querySelector('.hx-demo-panel-close').addEventListener('click', closeDemoPanel);
+
+    // Question click handlers
+    list.querySelectorAll('.hx-demo-question-item').forEach(item => {
+      item.addEventListener('click', () => handleQuestionSelection(item));
+    });
+
+    debugLog('✅ Demo FAB created');
+    return fab;
+  }
+
+  // Toggle demo panel open/close
+  function toggleDemoPanel() {
+    if (!demoFABPanel) return;
+    demoFABPanel.classList.toggle('hx-demo-panel-open');
+    debugLog('🎬 Demo panel toggled');
+  }
+
+  // Close demo panel
+  function closeDemoPanel() {
+    if (!demoFABPanel) return;
+    demoFABPanel.classList.remove('hx-demo-panel-open');
+    debugLog('🎬 Demo panel closed');
+  }
+
+  // Handle question selection
+  async function handleQuestionSelection(item) {
+    const questionText = item.dataset.questionText;
+    const questionId = item.dataset.questionId;
+
+    debugLog(`🎬 Question selected: ${questionId}`, questionText);
+
+    // Close panel
+    closeDemoPanel();
+
+    // Find input field using vendor adapter
+    const inputField = vendorAdapter.findInputField();
+    if (!inputField) {
+      debugLog('❌ Could not find input field');
+      return;
+    }
+
+    debugLog('🔍 Input field details:', {
+      tagName: inputField.tagName,
+      contentEditable: inputField.getAttribute('contenteditable'),
+      id: inputField.id,
+      className: inputField.className,
+      placeholder: inputField.placeholder
+    });
+
+    // Fill input field
+    if (inputField.tagName === 'TEXTAREA') {
+      debugLog('📝 Filling TEXTAREA');
+      inputField.value = questionText;
+      inputField.focus();
+      // Trigger input event for frameworks
+      inputField.dispatchEvent(new Event('input', { bubbles: true }));
+      inputField.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (inputField.getAttribute('contenteditable') === 'true') {
+      debugLog('📝 Filling contenteditable div');
+
+      // Focus first
+      inputField.focus();
+
+      // Clear existing content
+      inputField.innerHTML = '';
+
+      // For frameworks (React/Angular/Vue), use execCommand to simulate typing
+      // This triggers the framework's internal state management
+      try {
+        // Create a selection range scoped to the input field only
+        const range = document.createRange();
+        const sel = window.getSelection();
+
+        // Select all content within the input field only (not the whole page)
+        range.selectNodeContents(inputField);
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        // Insert text using execCommand (works better with frameworks)
+        document.execCommand('insertText', false, questionText);
+        debugLog('✅ Used execCommand to insert text');
+      } catch (e) {
+        debugLog('⚠️ execCommand failed, trying direct manipulation:', e);
+
+        // Fallback: direct manipulation
+        const textNode = document.createTextNode(questionText);
+        inputField.appendChild(textNode);
+
+        // Move cursor to end
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.setStart(textNode, questionText.length);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      // Trigger events for React/Vue/Angular frameworks
+      // NOTE: Don't include 'data' parameter in InputEvents as execCommand already inserted the text
+      // Including data would cause frameworks to insert the text multiple times
+      inputField.dispatchEvent(new Event('input', { bubbles: true }));
+      inputField.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    debugLog('✅ Question filled. Current value:', inputField.textContent || inputField.value);
+
+    // Start early processing BEFORE clicking submit
+    // This caches the demo response so it's ready when the page processes the query
+    debugLog('🚀 Starting early processing for demo question:', questionText);
+    await processQueryEarly(questionText);
+
+    // Wait 0.5 seconds so audience can see the question
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Verify text is still there after delay
+    const currentValue = inputField.textContent || inputField.value || '';
+    debugLog('🔍 Value after 0.5s delay:', currentValue);
+
+    if (!currentValue || currentValue.trim() === '') {
+      debugLog('❌ Input field was cleared! Refilling...');
+      if (inputField.tagName === 'TEXTAREA') {
+        inputField.value = questionText;
+      } else {
+        inputField.textContent = questionText;
+      }
+      debugLog('✅ Refilled. New value:', inputField.textContent || inputField.value);
+    }
+
+    // Find and click submit button
+    const buttons = vendorAdapter.findSubmitButtons();
+    debugLog('🔍 Found submit buttons:', buttons.length);
+    if (buttons.length > 0) {
+      debugLog('🔍 Submit button details:', {
+        tagName: buttons[0].tagName,
+        type: buttons[0].type,
+        ariaLabel: buttons[0].getAttribute('aria-label'),
+        disabled: buttons[0].disabled,
+        className: buttons[0].className
+      });
+    }
+
+    if (buttons.length > 0 && !buttons[0].disabled) {
+      debugLog('🚀 Clicking submit button');
+      buttons[0].click();
+      debugLog('✅ Submit button clicked');
+    } else if (buttons.length > 0 && buttons[0].disabled) {
+      debugLog('⚠️ Submit button is disabled, waiting 100ms and retrying...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (!buttons[0].disabled) {
+        debugLog('🚀 Submit button now enabled, clicking');
+        buttons[0].click();
+      } else {
+        debugLog('❌ Submit button still disabled after delay');
+      }
+    } else {
+      debugLog('⚠️ No submit button found, trying Enter key');
+      // Fallback: simulate Enter key press
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true
+      });
+      inputField.dispatchEvent(enterEvent);
+    }
+  }
+
+  // Inject FAB into page
+  function injectDemoFAB() {
+    if (demoFAB) {
+      debugLog('⚠️ Demo FAB already exists');
+      return;
+    }
+
+    demoFAB = createDemoFAB();
+    if (!demoFAB) return;
+
+    document.body.appendChild(demoFAB);
+    demoFABPanel = demoFAB.querySelector('.hx-demo-panel');
+
+    debugLog('✅ Demo FAB injected into page');
+
+    // Monitor if FAB gets removed unexpectedly
+    setTimeout(() => {
+      if (demoFAB && !document.body.contains(demoFAB)) {
+        debugLog('⚠️ WARNING: FAB was removed from DOM unexpectedly!');
+        debugLog('🔄 Attempting to re-inject FAB...');
+        demoFAB = null;
+        demoFABPanel = null;
+        injectDemoFAB();
+      } else if (demoFAB) {
+        debugLog('✅ FAB still in DOM after 2 seconds');
+      }
+    }, 2000);
+  }
+
+  // Remove FAB from page
+  function removeDemoFAB() {
+    if (demoFAB && demoFAB.parentNode) {
+      demoFAB.parentNode.removeChild(demoFAB);
+      demoFAB = null;
+      demoFABPanel = null;
+      debugLog('✅ Demo FAB removed from page');
+    }
+  }
+
+  // Update FAB visibility based on demo mode state
+  function updateDemoFABVisibility() {
+    if (isDemoModeEnabled) {
+      if (!demoFAB) {
+        injectDemoFAB();
+      }
+    } else {
+      removeDemoFAB();
+    }
+  }
+
   // Listen for settings changes
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'sync' && changes.hxSettings) {
@@ -1806,6 +2221,13 @@
       if (!oldSettings?.extensionEnabled && newSettings?.extensionEnabled) {
         debugLog('🟢 Extension re-enabled');
       }
+
+      // Update demo mode state
+      if (newSettings?.demoMode !== oldSettings?.demoMode) {
+        isDemoModeEnabled = newSettings?.demoMode || false;
+        debugLog(`🎬 Demo mode ${isDemoModeEnabled ? 'enabled' : 'disabled'}`);
+        updateDemoFABVisibility();
+      }
     }
   });
 
@@ -1814,6 +2236,12 @@
     console.log('🚨🚨🚨 HUNDREDX EXTENSION LOADING 🚨🚨🚨');
     debugLog('🚀 Initializing HundredX extension...');
     debugLog('Current URL:', window.location.href);
+
+    // Load demo mode state
+    await loadDemoMode();
+
+    // Inject demo FAB if demo mode is enabled
+    updateDemoFABVisibility();
 
     // Check API health
     const isHealthy = await api.healthCheck();
