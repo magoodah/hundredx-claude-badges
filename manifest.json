@@ -42,6 +42,7 @@
       ],
       "js": [
         "marked.min.js",
+        "demo-questions.js",
         "content.js"
       ],
       "css": [

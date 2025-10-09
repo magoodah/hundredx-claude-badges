@@ -7,6 +7,7 @@ const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 let extensionEnabledToggle;
 let templateSelect;
 let webSearchToggle;
+let demoModeToggle;
 let saveButton;
 let statusMessage;
 let healthDot;
@@ -21,7 +22,8 @@ let defaultTemplateId = null;
 const DEFAULT_SETTINGS = {
   extensionEnabled: true,
   template_id: null, // Will be set from API default
-  enable_web_search: false
+  enable_web_search: false,
+  demoMode: false
 };
 
 // Initialize popup
@@ -32,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   extensionEnabledToggle = document.getElementById('extensionEnabled');
   templateSelect = document.getElementById('templateSelect');
   webSearchToggle = document.getElementById('webSearch');
+  demoModeToggle = document.getElementById('demoMode');
   saveButton = document.getElementById('saveSettings');
   statusMessage = document.getElementById('statusMessage');
   healthDot = document.getElementById('healthDot');
@@ -58,6 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     onTemplateChange();
   });
   webSearchToggle.addEventListener('change', () => hideStatusMessage());
+  demoModeToggle.addEventListener('change', () => hideStatusMessage());
 
   // Initialize form state
   updateFormState();
@@ -91,6 +95,9 @@ async function loadSettings() {
       : (settings.webSearchEnabled !== undefined ? settings.webSearchEnabled : DEFAULT_SETTINGS.enable_web_search);
     webSearchToggle.checked = webSearchEnabled;
 
+    // Load demo mode setting
+    demoModeToggle.checked = settings.demoMode !== undefined ? settings.demoMode : DEFAULT_SETTINGS.demoMode;
+
     // Update web search toggle state based on selected template
     onTemplateChange();
   } catch (error) {
@@ -108,7 +115,8 @@ async function saveSettings() {
     const settings = {
       extensionEnabled: extensionEnabledToggle.checked,
       template_id: templateSelect.value,
-      enable_web_search: webSearchToggle.checked
+      enable_web_search: webSearchToggle.checked,
+      demoMode: demoModeToggle.checked
     };
 
     await chrome.storage.sync.set({ hxSettings: settings });
