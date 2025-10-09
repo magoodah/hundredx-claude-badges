@@ -783,18 +783,25 @@
 .hx-demo-fab-button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
+  justify-content: center;
+  position: relative;
+  width: 56px;
+  height: 56px;
+  padding: 0;
   background: #0f172a;
   border: 2px solid #22c55e;
-  border-radius: 28px;
-  color: #e2e8f0;
-  font-size: 14px;
-  font-weight: 600;
+  border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 20px rgba(34, 197, 94, 0.3);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
+}
+
+/* HX Logo in FAB */
+.hx-demo-fab-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .hx-demo-fab-button:hover {

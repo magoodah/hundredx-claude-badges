@@ -1940,12 +1940,16 @@
     const fab = document.createElement('div');
     fab.className = 'hx-demo-fab';
 
-    // Create button
+    // Create button with HX logo
     const button = document.createElement('button');
     button.className = 'hx-demo-fab-button';
+
+    // Get logo URL
+    const logoUrl = chrome.runtime.getURL('icons/icon48.png');
+
     button.innerHTML = `
+      <img src="${logoUrl}" alt="HundredX" class="hx-demo-fab-logo" />
       <span class="hx-demo-status-dot"></span>
-      <span class="hx-demo-fab-text">🎬 Demo (${DEMO_QUESTIONS.length})</span>
     `;
 
     // Create panel
@@ -1956,7 +1960,7 @@
     const header = document.createElement('div');
     header.className = 'hx-demo-panel-header';
     header.innerHTML = `
-      <span class="hx-demo-panel-title">Demo Questions</span>
+      <span class="hx-demo-panel-title">Questions</span>
       <button class="hx-demo-panel-close">×</button>
     `;
 
