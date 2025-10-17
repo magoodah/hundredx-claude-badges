@@ -1406,7 +1406,7 @@
     
     const title = document.createElement('h4');
     title.className = 'hx-response-title';
-    title.innerHTML = 'Powered by actual human reviews from <img src="' + LOGO_URL + '" alt="HundredX" style="height: 14px; vertical-align: baseline; margin-left: 4px; display: inline-block; position: relative; top: 1px;">';
+    title.innerHTML = '<img src="' + LOGO_URL + '" alt="HundredX" style="height: 14px; vertical-align: baseline; margin-left: 4px; display: inline-block; position: relative; top: 1px;">';
     title.style.whiteSpace = 'nowrap';
     
     // Create grouped status area (loading + status dot)
