@@ -82,6 +82,32 @@ The extension targets multiple AI platforms using resilient selectors:
 - Already processed nodes (`.hx-go-brand-wrap`) are skipped
 - Brand regex is case-insensitive and word-boundary aware
 
+## Git Commit & PR Guidelines
+
+### CRITICAL: NO AI ATTRIBUTION
+**NEVER include any mention of Claude Code, Claude, AI, or automated generation in:**
+- Commit messages
+- Pull request titles
+- Pull request descriptions
+- Code comments (unless specifically requested)
+
+### Commit Message Format
+- Use conventional commit format: `type: description`
+- Keep it concise and professional
+- Focus on WHAT changed and WHY, not WHO made the change
+- Example: `feat: add demo mode for live presentations`
+- Example: `fix: resolve panel alignment issue on Meta.ai`
+
+### Pull Request Format
+- **Title**: Clear, concise description of the feature/fix
+- **Body**: Include:
+  - Summary section with bullet points
+  - Key features/changes
+  - Technical details if relevant
+  - Test plan checklist
+- **NO attribution footers** - do not add "Generated with Claude Code" or similar
+- Keep it professional and focused on the technical changes
+
 ## File Structure
 ```
 ├── manifest.json       # Extension configuration
